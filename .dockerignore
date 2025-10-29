@@ -1,0 +1,26 @@
+# Dependencies
+node_modules
+npm-debug.log
+
+# Next.js build output
+.next
+out
+
+# Production artifacts
+*.log
+coverage
+
+# Git metadata
+.git
+.gitignore
+
+# Local env files
+.env
+.env.local
+.env.*
+!.env.example
+
+# IDE files
+.vscode
+.idea
+.DS_Store
