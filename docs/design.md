@@ -43,7 +43,7 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
 
 - **前端**
   - `app/`（Next.js App Router）路由包括：`login`、`dashboard`、`plans/[planId]`、`planner`、`expenses`。
-  - 组件：`VoiceInput`、`ItineraryTimeline`、`BudgetSummary`、`MapView`、`ExpenseList`、`PlanCard`。
+  - 组件：`VoiceInput`、`ItineraryTimeline`、`BudgetSummary`、`MapView`、`ExpenseList`、`PlanCard`、`ExpenseQuickAddModal`（语音笔记一键转费用）。
   - 自定义 Hook：`usePlanGenerator`、`useSpeech`、`useSupabaseAuth`。
   - 样式：Chakra 主题扩展 + Tailwind 工具类组合布局。
   - 客户端校验：`react-hook-form` 搭配 `zod` Schema。
@@ -72,6 +72,7 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
 - **行程提示词**：整合标准化用户偏好、高德 POI 候选、预算约束、亲子/老人友好标签。
 - **预算提示词**：通过 DashScope 函数调用请求结构化 JSON，按交通、住宿、餐饮、活动、备用金等拆分成本。
 - **费用摘要**：在聚合任务后生成每日亮点文本。
+- **语音记账衔接**：保留语音笔记原文并调用本地解析器（`voiceExpenseParser`）推测金额、分类等字段，作为 `ExpenseQuickAddModal` 的默认值。
 - **安全护栏**：温度控制在 0.5 以下保证预算稳定，设置最大 Token；客户端加入敏感词过滤后再提交。
 
 ## 8. 语音交互流程

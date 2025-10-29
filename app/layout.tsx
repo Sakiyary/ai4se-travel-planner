@@ -9,7 +9,11 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'AI 旅行规划师',
   description: '基于语音输入和大模型的智能旅行规划工具',
-  applicationName: 'AI Travel Planner'
+  applicationName: 'AI Travel Planner',
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg'
+  }
 };
 
 export const viewport = {

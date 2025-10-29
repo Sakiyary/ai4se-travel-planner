@@ -6,9 +6,16 @@ import { transcribeAudio } from '../../services/speech';
 
 interface VoiceUploadProps {
   onTranscript: (text: string) => void;
+  onAudioProcessed?: (payload: {
+    blob: Blob;
+    transcript: string;
+    durationMs?: number | null;
+    source: 'upload' | 'recording';
+  }) => void;
+  isBusy?: boolean;
 }
 
-export function VoiceUpload({ onTranscript }: VoiceUploadProps) {
+export function VoiceUpload({ onTranscript, onAudioProcessed, isBusy = false }: VoiceUploadProps) {
   const [fileName, setFileName] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -44,7 +51,11 @@ export function VoiceUpload({ onTranscript }: VoiceUploadProps) {
     }
   }
 
-  async function handleAudioBlob(blob: Blob, label: string) {
+  async function handleAudioBlob(
+    blob: Blob,
+    label: string,
+    options?: { durationMs?: number | null; source: 'upload' | 'recording' }
+  ) {
     setError(null);
     setTranscript(null);
     setFileName(label);
@@ -54,6 +65,14 @@ export function VoiceUpload({ onTranscript }: VoiceUploadProps) {
       const result = await transcribeAudio(blob);
       setTranscript(result.text);
       onTranscript(result.text);
+      if (onAudioProcessed && result.text) {
+        onAudioProcessed({
+          blob,
+          transcript: result.text,
+          durationMs: options?.durationMs ?? null,
+          source: options?.source ?? 'upload'
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : '科大讯飞转写失败，请稍后再试。';
       setError(message);
@@ -68,7 +87,7 @@ export function VoiceUpload({ onTranscript }: VoiceUploadProps) {
       return;
     }
 
-    await handleAudioBlob(file, file.name);
+    await handleAudioBlob(file, file.name, { source: 'upload', durationMs: null });
   }
 
   async function startRecording() {
@@ -112,7 +131,10 @@ export function VoiceUpload({ onTranscript }: VoiceUploadProps) {
         });
         recordingChunksRef.current = [];
         cleanupMediaStream();
-        void handleAudioBlob(recordedBlob, '浏览器录音');
+        void handleAudioBlob(recordedBlob, '浏览器录音', {
+          durationMs: recordingDurationMs,
+          source: 'recording'
+        });
       };
 
       mediaRecorderRef.current = recorder;
@@ -162,7 +184,7 @@ export function VoiceUpload({ onTranscript }: VoiceUploadProps) {
           type="file"
           accept=".pcm,.wav,.raw"
           onChange={handleFileChange}
-          isDisabled={isUploading}
+          isDisabled={isUploading || isBusy}
         />
       </FormControl>
 
@@ -174,7 +196,7 @@ export function VoiceUpload({ onTranscript }: VoiceUploadProps) {
             onClick={isRecording ? stopRecording : startRecording}
             variant="solid"
             colorScheme={isRecording ? 'red' : 'blue'}
-            isDisabled={isUploading}
+            isDisabled={isUploading || isBusy}
           >
             {isRecording ? '结束录音' : '开始录音'}
           </Button>

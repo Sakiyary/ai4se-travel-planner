@@ -105,6 +105,15 @@ export interface UpdatePlanInput {
   currency?: string | null;
 }
 
+export interface VoiceNoteRecord {
+  id: string;
+  plan_id: string;
+  storage_path: string;
+  transcript: string | null;
+  duration_seconds: number | null;
+  created_at: string;
+}
+
 async function getAuthenticatedUser(): Promise<User> {
   if (!supabaseClient) {
     throw new Error('Supabase client not initialized');
@@ -625,4 +634,91 @@ export function mapSupabaseError(error: PostgrestError | Error): string {
     return error.message;
   }
   return 'Unexpected Supabase error';
+}
+
+export async function fetchVoiceNotes(planId: string): Promise<VoiceNoteRecord[]> {
+  if (!supabaseClient) {
+    throw new Error('Supabase client not initialized');
+  }
+
+  const { data, error } = await supabaseClient
+    .from(SUPABASE_TABLES.VOICE_NOTES ?? 'voice_notes')
+    .select('id, plan_id, storage_path, transcript, duration_seconds, created_at')
+    .eq('plan_id', planId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    plan_id: String(row.plan_id),
+    storage_path: String(row.storage_path),
+    transcript: typeof row.transcript === 'string' ? row.transcript : null,
+    duration_seconds:
+      row.duration_seconds === null || row.duration_seconds === undefined
+        ? null
+        : typeof row.duration_seconds === 'number'
+          ? row.duration_seconds
+          : Number(row.duration_seconds),
+    created_at: String(row.created_at)
+  }));
+}
+
+export async function createVoiceNote(input: {
+  planId: string;
+  storagePath: string;
+  transcript?: string | null;
+  durationSeconds?: number | null;
+}): Promise<VoiceNoteRecord> {
+  if (!supabaseClient) {
+    throw new Error('Supabase client not initialized');
+  }
+
+  const payload = {
+    plan_id: input.planId,
+    storage_path: input.storagePath,
+    transcript: input.transcript ?? null,
+    duration_seconds: input.durationSeconds ?? null
+  } satisfies Record<string, unknown>;
+
+  const { data, error } = await supabaseClient
+    .from(SUPABASE_TABLES.VOICE_NOTES ?? 'voice_notes')
+    .insert(payload)
+    .select('id, plan_id, storage_path, transcript, duration_seconds, created_at')
+    .single();
+
+  if (error || !data) {
+    throw error ?? new Error('创建语音笔记失败');
+  }
+
+  return {
+    id: String(data.id),
+    plan_id: String(data.plan_id),
+    storage_path: String(data.storage_path),
+    transcript: typeof data.transcript === 'string' ? data.transcript : null,
+    duration_seconds:
+      data.duration_seconds === null || data.duration_seconds === undefined
+        ? null
+        : typeof data.duration_seconds === 'number'
+          ? data.duration_seconds
+          : Number(data.duration_seconds),
+    created_at: String(data.created_at)
+  } satisfies VoiceNoteRecord;
+}
+
+export async function deleteVoiceNote(noteId: string): Promise<void> {
+  if (!supabaseClient) {
+    throw new Error('Supabase client not initialized');
+  }
+
+  const { error } = await supabaseClient
+    .from(SUPABASE_TABLES.VOICE_NOTES ?? 'voice_notes')
+    .delete()
+    .eq('id', noteId);
+
+  if (error) {
+    throw error;
+  }
 }

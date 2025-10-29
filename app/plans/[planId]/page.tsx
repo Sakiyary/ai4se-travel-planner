@@ -24,10 +24,24 @@ import type { Route } from 'next';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { ItineraryViewer } from '../../../components/planner/ItineraryViewer';
+import { VoiceUpload } from '../../../components/planner/VoiceUpload';
+import { BudgetSummary } from '../../../components/planner/BudgetSummary';
 import { useSupabaseAuth } from '../../../hooks/useSupabaseAuth';
-import { deletePlan, fetchPlanDetail, updatePlan } from '../../../lib/supabaseQueries';
+import {
+  createExpense,
+  type CreateExpenseInput,
+  deletePlan,
+  fetchExpenses,
+  fetchPlanDetail,
+  fetchVoiceNotes,
+  type VoiceNoteRecord,
+  updatePlan
+} from '../../../lib/supabaseQueries';
 import type { ParsedItinerary } from '../../../services/llm';
 import { ROUTES } from '../../../lib/constants';
+import { getVoiceNoteSignedUrl, removeVoiceNote, storeVoiceNote } from '../../../services/voiceNotes';
+import { parseExpenseFromTranscript } from '../../../lib/voiceExpenseParser';
+import { ExpenseQuickAddModal } from '../../../components/expenses/ExpenseQuickAddModal';
 
 export default function PlanDetailPage() {
   const router = useRouter();
@@ -58,6 +72,29 @@ export default function PlanDetailPage() {
     staleTime: 60_000
   });
 
+  const {
+    data: voiceNotes,
+    isLoading: isVoiceNotesLoading,
+    error: voiceNotesError
+  } = useQuery({
+    queryKey: ['voice-notes', planId],
+    queryFn: () => fetchVoiceNotes(planId!),
+    enabled: Boolean(session && planId),
+    staleTime: 30_000
+  });
+
+  const {
+    data: expenses,
+    isLoading: isExpensesLoading,
+    isError: isExpensesError,
+    error: expensesError
+  } = useQuery({
+    queryKey: ['expenses', planId],
+    queryFn: () => fetchExpenses(planId!),
+    enabled: Boolean(session && planId),
+    staleTime: 30_000
+  });
+
   const errorMessage = useMemo(() => {
     if (!error) return null;
     if (error instanceof Error) {
@@ -77,6 +114,63 @@ export default function PlanDetailPage() {
   const [partySizeInput, setPartySizeInput] = useState('');
   const [budgetInput, setBudgetInput] = useState('');
   const [currencyInput, setCurrencyInput] = useState('');
+  const [lastVoiceTranscript, setLastVoiceTranscript] = useState('');
+  const [voiceNoteUrls, setVoiceNoteUrls] = useState<Record<string, string>>({});
+  const [expenseDraft, setExpenseDraft] = useState<{
+    note: VoiceNoteRecord;
+    planCurrency: string | null;
+    defaults: ReturnType<typeof parseExpenseFromTranscript>;
+  } | null>(null);
+
+  const expensesSummary = useMemo(() => {
+    if (!expenses) {
+      return null;
+    }
+
+    let total = 0;
+    let latest: string | null = null;
+
+    expenses.forEach((expense) => {
+      total += expense.amount;
+      const source = expense.timestamp ?? expense.created_at;
+      if (!source) {
+        return;
+      }
+      if (!latest) {
+        latest = source;
+        return;
+      }
+      if (new Date(source).getTime() > new Date(latest).getTime()) {
+        latest = source;
+      }
+    });
+
+    return {
+      total,
+      count: expenses.length,
+      latest
+    };
+  }, [expenses]);
+
+  const lastExpenseAtText = useMemo(() => {
+    if (!expensesSummary?.latest) {
+      return null;
+    }
+    return formatDateTime(expensesSummary.latest);
+  }, [expensesSummary]);
+
+  const expensesErrorMessage = useMemo(() => {
+    if (!isExpensesError) {
+      return null;
+    }
+    if (expensesError instanceof Error) {
+      return expensesError.message;
+    }
+    if (typeof expensesError === 'string') {
+      return expensesError;
+    }
+    return '加载费用记录失败，请稍后再试。';
+  }, [isExpensesError, expensesError]);
 
   useEffect(() => {
     if (!data) {
@@ -167,6 +261,58 @@ export default function PlanDetailPage() {
     }
   });
 
+  const createVoiceNoteMutation = useMutation({
+    mutationFn: async (payload: { blob: Blob; transcript: string; durationMs?: number | null }) => {
+      if (!planId) {
+        throw new Error('缺少计划 ID。');
+      }
+      return storeVoiceNote({
+        planId,
+        blob: payload.blob,
+        transcript: payload.transcript,
+        durationMs: payload.durationMs ?? null
+      });
+    },
+    onSuccess: () => {
+      toast({ status: 'success', title: '语音笔记已保存' });
+      queryClient.invalidateQueries({ queryKey: ['voice-notes', planId] });
+    },
+    onError: (mutationError: unknown) => {
+      const description =
+        mutationError instanceof Error ? mutationError.message : '保存语音笔记失败，请稍后再试。';
+      toast({ status: 'error', title: '保存失败', description });
+    }
+  });
+
+  const deleteVoiceNoteMutation = useMutation({
+    mutationFn: async (note: VoiceNoteRecord) => {
+      await removeVoiceNote(note.id, note.storage_path);
+    },
+    onSuccess: () => {
+      toast({ status: 'success', title: '语音笔记已删除' });
+      queryClient.invalidateQueries({ queryKey: ['voice-notes', planId] });
+    },
+    onError: (mutationError: unknown) => {
+      const description =
+        mutationError instanceof Error ? mutationError.message : '删除语音笔记失败，请稍后再试。';
+      toast({ status: 'error', title: '删除失败', description });
+    }
+  });
+
+  const createExpenseFromVoiceMutation = useMutation({
+    mutationFn: async (input: CreateExpenseInput) => createExpense(input),
+    onSuccess: () => {
+      toast({ status: 'success', title: '已记录费用' });
+      queryClient.invalidateQueries({ queryKey: ['expenses', planId] });
+      setExpenseDraft(null);
+    },
+    onError: (mutationError: unknown) => {
+      const description =
+        mutationError instanceof Error ? mutationError.message : '保存费用记录失败，请稍后再试。';
+      toast({ status: 'error', title: '保存失败', description });
+    }
+  });
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     updatePlanMutation.mutate();
@@ -183,6 +329,105 @@ export default function PlanDetailPage() {
     }
 
     deletePlanMutation.mutate();
+  }
+
+  async function handleVoiceAudioProcessed(payload: {
+    blob: Blob;
+    transcript: string;
+    durationMs?: number | null;
+  }) {
+    if (!payload.transcript.trim()) {
+      toast({ status: 'warning', title: '语音转写为空', description: '请重新录制或上传更清晰的语音。' });
+      return;
+    }
+
+    setLastVoiceTranscript(payload.transcript);
+
+    try {
+      await createVoiceNoteMutation.mutateAsync({
+        blob: payload.blob,
+        transcript: payload.transcript,
+        durationMs: payload.durationMs ?? null
+      });
+    } catch {
+      // toast 已在 mutation onError 中处理
+    }
+  }
+
+  async function handlePreviewVoiceNote(note: VoiceNoteRecord) {
+    if (voiceNoteUrls[note.id]) {
+      return;
+    }
+
+    try {
+      const url = await getVoiceNoteSignedUrl(note.storage_path);
+      setVoiceNoteUrls((prev) => ({ ...prev, [note.id]: url }));
+    } catch (error) {
+      const description = error instanceof Error ? error.message : '获取语音播放链接失败。';
+      toast({ status: 'error', title: '无法播放语音', description });
+    }
+  }
+
+  async function handleDeleteVoiceNote(note: VoiceNoteRecord) {
+    if (deleteVoiceNoteMutation.isPending) {
+      return;
+    }
+
+    try {
+      await deleteVoiceNoteMutation.mutateAsync(note);
+      setVoiceNoteUrls((prev) => {
+        const next = { ...prev };
+        delete next[note.id];
+        return next;
+      });
+    } catch {
+      // toast handled in mutation
+    }
+  }
+
+  function handleConvertVoiceNoteToExpense(note: VoiceNoteRecord) {
+    if (!note.transcript?.trim()) {
+      toast({ status: 'warning', title: '无法识别语音内容', description: '该语音暂未生成转写结果。' });
+      return;
+    }
+
+    const defaults = parseExpenseFromTranscript(note.transcript);
+    setExpenseDraft({
+      note,
+      planCurrency: data?.plan.currency ?? null,
+      defaults
+    });
+  }
+
+  async function handleSubmitExpenseFromVoice(values: {
+    amount: number;
+    currency: string;
+    category: string | null;
+    method: string | null;
+    notes: string | null;
+    timestamp: string;
+  }) {
+    if (!planId) {
+      throw new Error('缺少计划 ID。');
+    }
+
+    let isoTimestamp: string | null = null;
+    if (values.timestamp) {
+      const parsed = new Date(values.timestamp);
+      if (!Number.isNaN(parsed.getTime())) {
+        isoTimestamp = parsed.toISOString();
+      }
+    }
+
+    await createExpenseFromVoiceMutation.mutateAsync({
+      planId,
+      amount: values.amount,
+      currency: values.currency || data?.plan.currency || 'CNY',
+      category: values.category,
+      method: values.method,
+      notes: values.notes ?? expenseDraft?.defaults?.notes ?? null,
+      timestamp: isoTimestamp
+    });
   }
 
   const itineraryData = useMemo<ParsedItinerary | null>(() => {
@@ -363,6 +608,17 @@ export default function PlanDetailPage() {
         </CardBody>
       </Card>
 
+      <BudgetSummary
+        plan={data.plan}
+        days={data.days}
+        totalActivityBudget={data.totalActivityBudget}
+        actualSpent={expensesSummary ? expensesSummary.total : null}
+        expensesCount={expensesSummary?.count ?? null}
+        lastExpenseAt={lastExpenseAtText}
+        isExpensesLoading={isExpensesLoading}
+        expensesError={expensesErrorMessage}
+      />
+
       {data.totalActivityBudget && data.plan.budget && Math.abs(data.plan.budget - data.totalActivityBudget) > 1 ? (
         <Alert status="info" variant="left-accent">
           <AlertIcon />
@@ -371,6 +627,116 @@ export default function PlanDetailPage() {
           </AlertDescription>
         </Alert>
       ) : null}
+
+      <Card variant="outline">
+        <CardHeader>
+          <Heading size="md">语音笔记与语音记账</Heading>
+        </CardHeader>
+        <CardBody>
+          <Stack spacing={4}>
+            <VoiceUpload
+              onTranscript={(value) => setLastVoiceTranscript(value)}
+              onAudioProcessed={({ blob, transcript, durationMs }) =>
+                void handleVoiceAudioProcessed({ blob, transcript, durationMs })
+              }
+              isBusy={createVoiceNoteMutation.isPending}
+            />
+
+            {lastVoiceTranscript ? (
+              <Alert status="info" variant="left-accent">
+                <AlertIcon />
+                <AlertDescription fontSize="sm">
+                  最新语音转写：{lastVoiceTranscript}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            {voiceNotesError ? (
+              <Alert status="error" variant="left-accent">
+                <AlertIcon />
+                <AlertDescription fontSize="sm">
+                  {voiceNotesError instanceof Error ? voiceNotesError.message : '加载语音笔记失败'}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            {isVoiceNotesLoading ? (
+              <Stack spacing={3} align="center" justify="center" minH="160px">
+                <Spinner size="md" color="cyan.500" />
+                <Text fontSize="sm" color="gray.600">
+                  正在获取语音笔记...
+                </Text>
+              </Stack>
+            ) : (voiceNotes?.length ?? 0) > 0 ? (
+              <Stack spacing={3}>
+                {voiceNotes!.map((note) => (
+                  <Box key={note.id} borderWidth="1px" borderColor="gray.200" rounded="md" p={4} bg="gray.50">
+                    <Stack spacing={2}>
+                      <Text fontSize="sm" color="gray.600">
+                        创建于：{formatDateTime(note.created_at)}
+                      </Text>
+                      {note.transcript ? (
+                        <Text fontSize="sm" color="gray.800">
+                          {note.transcript}
+                        </Text>
+                      ) : (
+                        <Text fontSize="sm" color="gray.500">
+                          暂无转写内容。
+                        </Text>
+                      )}
+                      <Stack direction={{ base: 'column', sm: 'row' }} spacing={3} align="center">
+                        {voiceNoteUrls[note.id] ? (
+                          <audio
+                            controls
+                            preload="metadata"
+                            src={voiceNoteUrls[note.id]}
+                            style={{ width: '100%' }}
+                          />
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void handlePreviewVoiceNote(note)}
+                          >
+                            生成播放链接
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          colorScheme="red"
+                          onClick={() => void handleDeleteVoiceNote(note)}
+                          isDisabled={deleteVoiceNoteMutation.isPending}
+                        >
+                          删除
+                        </Button>
+                        <Button
+                          size="sm"
+                          colorScheme="cyan"
+                          variant="outline"
+                          onClick={() => handleConvertVoiceNoteToExpense(note)}
+                          isDisabled={!note.transcript || createExpenseFromVoiceMutation.isPending}
+                        >
+                          记录为开销
+                        </Button>
+                        {typeof note.duration_seconds === 'number' ? (
+                          <Text fontSize="xs" color="gray.500">
+                            时长：{formatDurationSeconds(note.duration_seconds)}
+                          </Text>
+                        ) : null}
+                      </Stack>
+                    </Stack>
+                  </Box>
+                ))}
+              </Stack>
+            ) : (
+              <Text fontSize="sm" color="gray.500">
+                还没有语音笔记，可通过上方录音或上传语音快速补充需求、记账或留存灵感。
+              </Text>
+            )}
+          </Stack>
+        </CardBody>
+      </Card>
 
       <Box>
         <Heading size="md" mb={3}>
@@ -396,6 +762,25 @@ export default function PlanDetailPage() {
           刷新数据
         </Button>
       </Stack>
+
+      <ExpenseQuickAddModal
+        isOpen={Boolean(expenseDraft)}
+        onClose={() => {
+          if (!createExpenseFromVoiceMutation.isPending) {
+            setExpenseDraft(null);
+          }
+        }}
+        defaults={expenseDraft?.defaults ?? {
+          amount: null,
+          currency: data?.plan.currency ?? 'CNY',
+          category: null,
+          method: null,
+          notes: expenseDraft?.defaults?.notes ?? ''
+        }}
+        planCurrency={expenseDraft?.planCurrency ?? data?.plan.currency ?? null}
+        onSubmit={handleSubmitExpenseFromVoice}
+        isSubmitting={createExpenseFromVoiceMutation.isPending}
+      />
     </Stack>
   );
 }
@@ -447,4 +832,20 @@ function formatCurrency(amount: number | null | undefined, currency: string | nu
   } catch {
     return `${amount.toFixed(0)} ${currencyCode}`;
   }
+}
+
+function formatDurationSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return '约 0 秒';
+  }
+
+  const totalSeconds = Math.round(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (minutes <= 0) {
+    return `${remainingSeconds} 秒`;
+  }
+
+  return `${minutes} 分 ${remainingSeconds.toString().padStart(2, '0')} 秒`;
 }

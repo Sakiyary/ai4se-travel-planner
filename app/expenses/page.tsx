@@ -4,12 +4,15 @@ import {
   Alert,
   AlertDescription,
   AlertIcon,
+  Box,
   Button,
   Card,
   CardBody,
   CardHeader,
   Divider,
+  Flex,
   Heading,
+  Progress,
   Select,
   Spinner,
   Stack,
@@ -36,6 +39,12 @@ import {
   type PlanRecord
 } from '../../lib/supabaseQueries';
 import { ROUTES } from '../../lib/constants';
+
+type DailyBreakdownItem = {
+  date: string;
+  amount: number;
+  isUnknown: boolean;
+};
 
 export default function ExpensesPage() {
   const toast = useToast();
@@ -119,6 +128,70 @@ export default function ExpensesPage() {
     }
     return selectedPlan.budget - totalSpent;
   }, [selectedPlan, totalSpent]);
+
+  const remainingRatio = useMemo(() => {
+    if (remainingBudget === null) {
+      return null;
+    }
+
+    if (!selectedPlan || typeof selectedPlan.budget !== 'number' || selectedPlan.budget <= 0) {
+      return null;
+    }
+
+    return remainingBudget / selectedPlan.budget;
+  }, [remainingBudget, selectedPlan]);
+
+  const categoryBreakdown = useMemo(() => {
+    if (!expenses || expenses.length === 0) {
+      return [] as Array<{ category: string; amount: number }>;
+    }
+
+    const map = new Map<string, number>();
+    expenses.forEach((expense) => {
+      const key = expense.category && expense.category.trim() ? expense.category.trim() : '其他';
+      map.set(key, (map.get(key) ?? 0) + expense.amount);
+    });
+
+    return Array.from(map.entries())
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [expenses]);
+
+  const dailyBreakdown = useMemo<DailyBreakdownItem[]>(() => {
+    if (!expenses || expenses.length === 0) {
+      return [];
+    }
+
+    const map = new Map<string, number>();
+
+    expenses.forEach((expense) => {
+      const dateSource = expense.timestamp ?? expense.created_at;
+      const parsed = new Date(dateSource);
+      const key = Number.isNaN(parsed.getTime())
+        ? '未知日期'
+        : parsed.toISOString().slice(0, 10);
+      map.set(key, (map.get(key) ?? 0) + expense.amount);
+    });
+
+    return Array.from(map.entries())
+      .map(([date, amount]) => ({ date, amount, isUnknown: date === '未知日期' }))
+      .sort((a, b) => {
+        if (a.isUnknown && !b.isUnknown) {
+          return 1;
+        }
+        if (!a.isUnknown && b.isUnknown) {
+          return -1;
+        }
+        return a.date.localeCompare(b.date);
+      });
+  }, [expenses]);
+
+  const maxCategoryAmount = useMemo(() => {
+    if (categoryBreakdown.length === 0) {
+      return 1;
+    }
+    return Math.max(...categoryBreakdown.map((item) => item.amount), 1);
+  }, [categoryBreakdown]);
 
   if (isAuthLoading || (!session && typeof window !== 'undefined')) {
     return (
@@ -265,6 +338,80 @@ export default function ExpensesPage() {
                 <StatHelpText>实时计算</StatHelpText>
               </Stat>
             </Stack>
+
+            {remainingBudget !== null ? (
+              remainingBudget < 0 ? (
+                <Alert status="error" variant="left-accent" mt={4}>
+                  <AlertIcon />
+                  <AlertDescription fontSize="sm">
+                    预算已超支 {formatCurrency(Math.abs(remainingBudget), selectedPlan.currency)}，建议检查大额消费或调整预期。
+                  </AlertDescription>
+                </Alert>
+              ) : remainingRatio !== null && remainingRatio < 0.2 ? (
+                <Alert status="warning" variant="left-accent" mt={4}>
+                  <AlertIcon />
+                  <AlertDescription fontSize="sm">
+                    剩余预算不足 20%，请留意后续开销。
+                  </AlertDescription>
+                </Alert>
+              ) : null
+            ) : null}
+          </CardBody>
+        </Card>
+      ) : null}
+
+      {selectedPlan ? (
+        <Card variant="outline">
+          <CardHeader>
+            <Heading size="md">开销分析</Heading>
+          </CardHeader>
+          <CardBody>
+            {(!expenses || expenses.length === 0) ? (
+              <Text color="gray.600">暂无费用记录，可先通过下方表单添加或语音记账。</Text>
+            ) : (
+              <Stack spacing={6}>
+                <Box>
+                  <Heading size="sm" mb={3}>按分类分布</Heading>
+                  <Stack spacing={3}>
+                    {categoryBreakdown.map((item) => (
+                      <Box key={item.category}>
+                        <Flex justify="space-between" align="baseline" mb={1}>
+                          <Text fontSize="sm" color="gray.700">
+                            {item.category}
+                          </Text>
+                          <Text fontSize="sm" color="gray.600">
+                            {formatCurrency(item.amount, selectedPlan.currency)}
+                          </Text>
+                        </Flex>
+                        <Progress
+                          colorScheme="cyan"
+                          size="sm"
+                          borderRadius="md"
+                          value={(item.amount / maxCategoryAmount) * 100}
+                          hasStripe={item.amount === maxCategoryAmount && categoryBreakdown.length > 1}
+                        />
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+
+                <Box>
+                  <Heading size="sm" mb={3}>按日期分布</Heading>
+                  <Stack spacing={2}>
+                    {dailyBreakdown.map((item) => (
+                      <Flex key={item.date} justify="space-between" align="center" borderWidth="1px" borderColor="gray.200" rounded="md" px={3} py={2} bg="gray.50">
+                        <Text fontSize="sm" color="gray.700">
+                          {formatDateLabel(item.date)}
+                        </Text>
+                        <Text fontSize="sm" color="gray.800">
+                          {formatCurrency(item.amount, selectedPlan.currency)}
+                        </Text>
+                      </Flex>
+                    ))}
+                  </Stack>
+                </Box>
+              </Stack>
+            )}
           </CardBody>
         </Card>
       ) : null}
@@ -327,5 +474,24 @@ function formatCurrency(amount: number | null, currency: string | null | undefin
     }).format(amount);
   } catch {
     return `${amount.toFixed(0)} ${currencyCode}`;
+  }
+}
+
+function formatDateLabel(dateKey: string): string {
+  if (dateKey === '未知日期') {
+    return '未知日期';
+  }
+
+  try {
+    const date = new Date(dateKey);
+    if (Number.isNaN(date.getTime())) {
+      return dateKey;
+    }
+    return new Intl.DateTimeFormat('zh-CN', {
+      month: 'numeric',
+      day: 'numeric'
+    }).format(date);
+  } catch {
+    return dateKey;
   }
 }

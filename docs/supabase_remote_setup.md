@@ -49,7 +49,12 @@ supabase link --project-ref jfsmutcdmogsrqtlancn
 
 ## 推送数据库架构
 
-本仓库目前包含一个迁移文件 `supabase/sql/001_base_schema.sql`，该脚本会创建 `profiles`、`plans`、`plan_segments`、`expenses`、`voice_notes`、`audit_logs` 等表及其索引、RLS 策略，与前端 `lib/supabaseQueries.ts`、`components/expenses/*`、`services/speech.ts` 等模块的字段使用保持一致。除非有新的迁移文件加入，执行本节命令即会运行该脚本。
+本仓库目前包含以下迁移脚本：
+
+- `supabase/sql/001_base_schema.sql`：创建 `profiles`、`plans`、`plan_segments`、`expenses`、`voice_notes`、`audit_logs` 等表及其索引与 RLS 策略。
+- `supabase/sql/003_fix_voice_notes_policy.sql`：为 `voice_notes` 表补充更严格的 `SELECT/INSERT/UPDATE` 策略，确保只有计划拥有者可以访问。
+
+除非有新的迁移文件加入，执行本节命令即会按顺序运行这些脚本。
 
 1. **执行迁移脚本**
 
