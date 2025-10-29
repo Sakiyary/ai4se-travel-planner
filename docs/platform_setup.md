@@ -16,6 +16,9 @@
   - 免费额度有限，注意控制调用频率。
   - 需在后台绑定服务器 IP 或配置白名单，避免被判定为异常调用。
   - 当前实现直接在前端通过 WebSocket 调用语音听写 API，部署时需知 AppID / API Key / API Secret 会在客户端暴露。
+  - 浏览器端的麦克风录音仅在 HTTPS 或 `http://localhost` 场景下可用，首次使用需允许页面访问麦克风。
+  - 录音得到的 `webm/opus` 音频会在前端自动转换为 16kHz PCM 再发送至科大讯飞，无需额外工具。
+  - 若浏览器不支持 MediaRecorder，请改用上传原始 PCM/WAV 文件的方式进行转写。
 
 ## 2. 阿里云百炼·通义千问（DashScope）
 
@@ -120,7 +123,7 @@
 | `IFLYTEK_API_KEY` | 科大讯飞 | 语音识别密钥 |
 | `IFLYTEK_API_SECRET` | 科大讯飞 | 语音识别密钥 |
 | `AMAP_WEB_KEY` | 高德开放平台 | 前端地图渲染 Key |
-| `AMAP_SERVICE_KEY` | 高德开放平台 | 服务器端 POI/路线请求 Key |
+| `AMAP_SECURITY_JS_CODE` | 高德开放平台 | 前端安全校验码 |
 
 > Next.js 通过 `next.config.mjs` 将上表中的服务器变量映射到 `NEXT_PUBLIC_*` 前缀，方便客户端读取，无需重复配置。
 

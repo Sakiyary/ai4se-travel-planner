@@ -1,7 +1,9 @@
-import axios from 'axios';
 import { z } from 'zod';
 
-const itinerarySchema = z.object({
+export const itinerarySchema = z.object({
+  title: z.union([z.string().min(1), z.null()]).optional(),
+  destination: z.union([z.string().min(1), z.null()]).optional(),
+  partySize: z.coerce.number().int().min(1).default(2),
   itinerary: z.array(
     z.object({
       day: z.number(),
@@ -12,6 +14,7 @@ const itinerarySchema = z.object({
           startTime: z.string().optional(),
           endTime: z.string().optional(),
           description: z.string().optional(),
+          city: z.string().optional(),
           poiId: z.string().optional(),
           budget: z.number().optional()
         })
@@ -30,60 +33,64 @@ const itinerarySchema = z.object({
 
 export type ParsedItinerary = z.infer<typeof itinerarySchema>;
 
-const DASHSCOPE_ENDPOINT =
-  'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation';
+const LOCAL_API_ENDPOINT = '/api/generate-itinerary';
 
 export async function generateItinerary(prompt: string): Promise<ParsedItinerary> {
-  const apiKey = process.env.DASHSCOPE_API_KEY || process.env.NEXT_PUBLIC_DASHSCOPE_API_KEY;
-
-  if (!apiKey) {
-    throw new Error('缺少 DashScope API Key，请在环境变量中配置 DASHSCOPE_API_KEY。');
+  if (!prompt.trim()) {
+    throw new Error('提示词不能为空。');
   }
 
-  const response = await axios.post(
-    DASHSCOPE_ENDPOINT,
-    {
-      model: 'qwen-plus',
-      input: {
-        prompt
-      },
-      parameters: {
-        result_format: 'json',
-        max_output_tokens: 1024
-      }
+  const response = await fetch(LOCAL_API_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
     },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
-      },
-      timeout: 20_000
+    body: JSON.stringify({ prompt }),
+    cache: 'no-store'
+  });
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('无法解析服务器响应', error);
     }
-  );
-
-  const rawOutput =
-    response.data?.output?.text ?? response.data?.output?.choices?.[0]?.message?.content;
-
-  if (!rawOutput) {
-    throw new Error('DashScope 响应为空，请检查模型配置或请求体。');
+    throw new Error('解析行程生成响应失败，请稍后重试。');
   }
 
-  let parsedPayload: unknown;
+  if (!response.ok) {
+    let errorMessage = '行程生成失败，请稍后再试。';
 
-  if (typeof rawOutput === 'string') {
-    try {
-      parsedPayload = JSON.parse(rawOutput);
-    } catch {
-      throw new Error('DashScope 输出不是有效的 JSON 字符串，请检查提示词与 result_format。');
+    if (typeof payload === 'object' && payload) {
+      const maybeError = (payload as { error?: unknown }).error;
+      if (typeof maybeError === 'string') {
+        errorMessage = maybeError;
+      }
+
+      const rawOutput = (payload as { rawOutput?: unknown }).rawOutput;
+      if (typeof rawOutput === 'string' && rawOutput.trim().length > 0) {
+        errorMessage = `${errorMessage}
+原始返回片段：${truncate(rawOutput)}`;
+      }
     }
-  } else {
-    parsedPayload = rawOutput;
+
+    throw new Error(errorMessage);
   }
 
-  const parsed = itinerarySchema.safeParse(parsedPayload);
+  const data = typeof payload === 'object' && payload && 'data' in payload ? (payload as { data: unknown }).data : payload;
+  const parsed = itinerarySchema.safeParse(data);
+
   if (!parsed.success) {
     throw new Error('行程解析失败，请检查 LLM 输出格式。');
   }
 
   return parsed.data;
+}
+
+function truncate(value: string, maxLength = 800) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength)}…`;
 }

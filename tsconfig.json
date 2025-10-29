@@ -21,7 +21,8 @@
     "types": [
       "node",
       "vitest/globals",
-      "@testing-library/jest-dom"
+      "@testing-library/jest-dom",
+      "@amap/amap-jsapi-types"
     ],
     "noEmit": true,
     "plugins": [

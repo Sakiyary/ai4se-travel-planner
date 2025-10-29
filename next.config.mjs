@@ -7,6 +7,7 @@ const publicEnvFallback = {
   NEXT_PUBLIC_IFLYTEK_API_KEY: 'IFLYTEK_API_KEY',
   NEXT_PUBLIC_IFLYTEK_API_SECRET: 'IFLYTEK_API_SECRET',
   NEXT_PUBLIC_AMAP_KEY: 'AMAP_WEB_KEY',
+  NEXT_PUBLIC_AMAP_SECURITY_JS_CODE: 'AMAP_SECURITY_JS_CODE',
   NEXT_PUBLIC_DASHSCOPE_API_KEY: 'DASHSCOPE_API_KEY'
 };
 
@@ -19,8 +20,8 @@ for (const [publicKey, baseKey] of Object.entries(publicEnvFallback)) {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  typedRoutes: true,
   experimental: {
-    typedRoutes: true,
     optimisticClientCache: true
   },
   images: {

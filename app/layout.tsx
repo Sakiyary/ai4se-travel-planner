@@ -9,7 +9,10 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'AI 旅行规划师',
   description: '基于语音输入和大模型的智能旅行规划工具',
-  applicationName: 'AI Travel Planner',
+  applicationName: 'AI Travel Planner'
+};
+
+export const viewport = {
   themeColor: '#0ea5e9'
 };
 
@@ -19,8 +22,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" className={inter.className}>
-      <body>
+    <html
+      lang="zh-CN"
+      className={inter.className}
+      data-theme="light"
+      style={{ colorScheme: 'light' }}
+      suppressHydrationWarning
+    >
+      <body suppressHydrationWarning>
         <AppProviders>
           <AppShell>{children}</AppShell>
         </AppProviders>

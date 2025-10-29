@@ -1,6 +1,42 @@
+with upsert_user as (
+  insert into auth.users (
+    id,
+    instance_id,
+    aud,
+    role,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    created_at,
+    updated_at
+  )
+  values (
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'demo@example.com',
+    crypt('DemoPass123!', gen_salt('bf')),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{}'::jsonb,
+    now(),
+    now()
+  )
+  on conflict (id) do update set
+    email = excluded.email,
+    encrypted_password = excluded.encrypted_password,
+    updated_at = now()
+  returning id, email
+)
 insert into public.profiles (id, email, display_name)
-values
-  ('00000000-0000-0000-0000-000000000001', 'demo@example.com', 'Demo User')
+select
+  id,
+  email,
+  'Demo User'
+from upsert_user
 on conflict (id) do update set
   email = excluded.email,
   display_name = excluded.display_name,

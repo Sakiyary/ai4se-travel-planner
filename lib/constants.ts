@@ -14,5 +14,10 @@ export const ROUTES = {
   LOGIN: '/login',
   DASHBOARD: '/dashboard',
   PLANNER: '/planner',
-  EXPENSES: '/expenses'
+  EXPENSES: '/expenses',
+  PLANS: '/plans'
 } as const;
+
+export function getPlanDetailRoute(planId: string): string {
+  return `${ROUTES.PLANS}/${planId}`;
+}
