@@ -73,6 +73,23 @@ export interface PlanDetail {
   totalActivityBudget: number | null;
 }
 
+export interface ProfileRecord {
+  id: string;
+  email: string;
+  displayName: string | null;
+  defaultCurrency: string | null;
+  defaultCompanionCount: number | null;
+  createdAt: string;
+  updatedAt: string;
+  preferences: Record<string, unknown>;
+}
+
+export interface UpdateProfileInput {
+  displayName?: string | null;
+  defaultCurrency?: string | null;
+  defaultCompanionCount?: number | null;
+}
+
 export interface ExpenseRecord {
   id: string;
   plan_id: string;
@@ -179,6 +196,106 @@ async function ensureProfileExists(user: User): Promise<void> {
     }
     throw error;
   }
+}
+
+async function fetchProfileRow(userId: string): Promise<Record<string, unknown> | null> {
+  if (!supabaseClient) {
+    throw new Error('Supabase client not initialized');
+  }
+
+  const { data, error } = await supabaseClient
+    .from(SUPABASE_TABLES.PROFILES)
+    .select('id, email, display_name, preferences, created_at, updated_at')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    if (isSchemaCacheMissing(error)) {
+      throw new Error('Supabase 尚未刷新 schema 缓存，请稍后再试或在 Supabase 控制台刷新 schema。');
+    }
+    throw error;
+  }
+
+  return (data ?? null) as Record<string, unknown> | null;
+}
+
+export async function fetchCurrentProfile(): Promise<ProfileRecord | null> {
+  const user = await getAuthenticatedUser();
+  await ensureProfileExists(user);
+
+  const row = await fetchProfileRow(user.id);
+  if (!row) {
+    return null;
+  }
+
+  return normalizeProfile(row);
+}
+
+export async function updateProfile(updates: UpdateProfileInput): Promise<ProfileRecord> {
+  const user = await getAuthenticatedUser();
+  await ensureProfileExists(user);
+
+  const existingRow = await fetchProfileRow(user.id);
+  if (!existingRow) {
+    throw new Error('当前用户资料不存在，请稍后再试。');
+  }
+
+  const existingProfile = normalizeProfile(existingRow);
+  const payload: Record<string, unknown> = {};
+  let hasChange = false;
+
+  if (updates.displayName !== undefined) {
+    const trimmed = updates.displayName?.trim();
+    payload.display_name = trimmed && trimmed.length > 0 ? trimmed : null;
+    hasChange = true;
+  }
+
+  const nextPreferences = { ...existingProfile.preferences };
+  let preferencesChanged = false;
+
+  if (updates.defaultCurrency !== undefined) {
+    const normalizedCurrency = updates.defaultCurrency
+      ? updates.defaultCurrency.trim().toUpperCase()
+      : null;
+    nextPreferences.default_currency = normalizedCurrency;
+    preferencesChanged = true;
+  }
+
+  if (updates.defaultCompanionCount !== undefined) {
+    let normalizedCount: number | null = null;
+    if (updates.defaultCompanionCount !== null && Number.isFinite(updates.defaultCompanionCount)) {
+      normalizedCount = Math.max(0, Math.trunc(updates.defaultCompanionCount));
+    }
+    nextPreferences.default_companion_count = normalizedCount;
+    preferencesChanged = true;
+  }
+
+  if (preferencesChanged) {
+    payload.preferences = nextPreferences;
+    hasChange = true;
+  }
+
+  if (!hasChange) {
+    throw new Error('No profile fields provided for update.');
+  }
+
+  payload.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabaseClient!
+    .from(SUPABASE_TABLES.PROFILES)
+    .update(payload)
+    .eq('id', user.id)
+    .select('id, email, display_name, preferences, created_at, updated_at')
+    .single();
+
+  if (error || !data) {
+    if (error && isSchemaCacheMissing(error)) {
+      throw new Error('Supabase 尚未刷新 schema 缓存，请稍后再试或在 Supabase 控制台刷新 schema。');
+    }
+    throw error ?? new Error('更新用户资料失败');
+  }
+
+  return normalizeProfile(data as Record<string, unknown>);
 }
 
 export async function savePlanFromItinerary(options: SavePlanFromItineraryOptions): Promise<string> {
@@ -537,6 +654,52 @@ export async function deletePlan(planId: string): Promise<void> {
 
 function isSchemaCacheMissing(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'PGRST205';
+}
+
+function normalizeProfile(row: Record<string, unknown>): ProfileRecord {
+  const rawPreferences =
+    typeof row.preferences === 'object' && row.preferences !== null && !Array.isArray(row.preferences)
+      ? { ...(row.preferences as Record<string, unknown>) }
+      : {};
+
+  const currencyValue = rawPreferences.default_currency;
+  const normalizedCurrency =
+    typeof currencyValue === 'string' && currencyValue.trim().length > 0
+      ? currencyValue.trim().toUpperCase()
+      : null;
+
+  const companionValue = rawPreferences.default_companion_count;
+  let normalizedCompanion: number | null = null;
+  if (typeof companionValue === 'number') {
+    normalizedCompanion = Math.max(0, Math.trunc(companionValue));
+  } else if (typeof companionValue === 'string') {
+    const parsed = Number(companionValue);
+    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+      normalizedCompanion = Math.max(0, Math.trunc(parsed));
+    }
+  }
+
+  if (normalizedCurrency === null) {
+    delete rawPreferences.default_currency;
+  } else {
+    rawPreferences.default_currency = normalizedCurrency;
+  }
+
+  rawPreferences.default_companion_count = normalizedCompanion;
+
+  const displayNameRaw = typeof row.display_name === 'string' ? row.display_name.trim() : '';
+  const displayName = displayNameRaw.length > 0 ? displayNameRaw : null;
+
+  return {
+    id: String(row.id),
+    email: typeof row.email === 'string' ? row.email : '',
+    displayName,
+    defaultCurrency: normalizedCurrency,
+    defaultCompanionCount: normalizedCompanion,
+    createdAt: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+    updatedAt: typeof row.updated_at === 'string' ? row.updated_at : new Date().toISOString(),
+    preferences: rawPreferences
+  } satisfies ProfileRecord;
 }
 
 function normalizeExpense(row: Record<string, unknown>): ExpenseRecord {

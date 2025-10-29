@@ -42,8 +42,10 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
 ## 5. 模块划分
 
 - **前端**
-  - `app/`（Next.js App Router）路由包括：`login`、`dashboard`、`plans/[planId]`、`planner`、`expenses`。
+  - `app/`（Next.js App Router）路由包括：`login`、`dashboard`、`plans/[planId]`、`planner`、`expenses`、`profile`。
   - 组件：`VoiceInput`、`ItineraryTimeline`、`BudgetSummary`、`MapView`、`ExpenseList`、`PlanCard`、`ExpenseQuickAddModal`（语音笔记一键转费用）。
+  - 用户资料页：`app/profile/page.tsx` 提供昵称、默认币种与默认同行人数的基础表单，写入 Supabase `profiles` 表的偏好字段。
+  - 计划详情页：`app/plans/[planId]/page.tsx` 支持语音笔记、费用联动，并提供 Markdown/JSON/PDF 导出功能。
   - 自定义 Hook：`usePlanGenerator`、`useSpeech`、`useSupabaseAuth`。
   - 样式：Chakra 主题扩展 + Tailwind 工具类组合布局。
   - 客户端校验：`react-hook-form` 搭配 `zod` Schema。

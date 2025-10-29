@@ -12,7 +12,12 @@ import {
   FormControl,
   FormLabel,
   Heading,
+  Icon,
   Input,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuList,
   SimpleGrid,
   Spinner,
   Stack,
@@ -31,9 +36,11 @@ import {
   createExpense,
   type CreateExpenseInput,
   deletePlan,
+  type ExpenseRecord,
   fetchExpenses,
   fetchPlanDetail,
   fetchVoiceNotes,
+  type PlanDetail,
   type VoiceNoteRecord,
   updatePlan
 } from '../../../lib/supabaseQueries';
@@ -42,6 +49,78 @@ import { ROUTES } from '../../../lib/constants';
 import { getVoiceNoteSignedUrl, removeVoiceNote, storeVoiceNote } from '../../../services/voiceNotes';
 import { parseExpenseFromTranscript } from '../../../lib/voiceExpenseParser';
 import { ExpenseQuickAddModal } from '../../../components/expenses/ExpenseQuickAddModal';
+import { Download, FileDown, FileJson, FileText } from 'lucide-react';
+import type { jsPDF as JsPDFClass } from 'jspdf';
+
+const CHINESE_FONT_CONFIG = {
+  fontName: 'SimHeiCompat',
+  fileName: 'SimHei.ttf',
+  fontUrl: '/fonts/simhei.ttf'
+} as const;
+
+type JsPDFInstance = InstanceType<typeof JsPDFClass>;
+
+let chineseFontBase64: string | null = null;
+let chineseFontLoadingPromise: Promise<string> | null = null;
+
+function arrayBufferToBinaryString(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return binary;
+}
+
+async function loadChineseFontBase64(): Promise<string> {
+  if (chineseFontBase64) {
+    return chineseFontBase64;
+  }
+
+  if (!chineseFontLoadingPromise) {
+    chineseFontLoadingPromise = (async () => {
+      if (typeof window === 'undefined') {
+        throw new Error('字体加载需在浏览器环境中执行。');
+      }
+
+      const response = await fetch(CHINESE_FONT_CONFIG.fontUrl, { cache: 'force-cache' });
+      if (!response.ok) {
+        throw new Error('下载 PDF 字体资源失败，请稍后再试。');
+      }
+
+      const buffer = await response.arrayBuffer();
+      const base64 = window.btoa(arrayBufferToBinaryString(buffer));
+      chineseFontBase64 = base64;
+      return base64;
+    })();
+  }
+
+  try {
+    const base64 = await chineseFontLoadingPromise;
+    chineseFontBase64 = base64;
+    return base64;
+  } catch (error) {
+    chineseFontLoadingPromise = null;
+    throw error;
+  }
+}
+
+async function ensureChineseFont(doc: JsPDFInstance): Promise<void> {
+  const fontList = doc.getFontList() as Record<string, string[]>;
+  if (fontList[CHINESE_FONT_CONFIG.fontName]?.includes('normal')) {
+    doc.setFont(CHINESE_FONT_CONFIG.fontName, 'normal');
+    return;
+  }
+
+  const fontBase64 = await loadChineseFontBase64();
+  doc.addFileToVFS(CHINESE_FONT_CONFIG.fileName, fontBase64);
+  doc.addFont(CHINESE_FONT_CONFIG.fileName, CHINESE_FONT_CONFIG.fontName, 'normal');
+  doc.setFont(CHINESE_FONT_CONFIG.fontName, 'normal');
+}
 
 export default function PlanDetailPage() {
   const router = useRouter();
@@ -318,6 +397,47 @@ export default function PlanDetailPage() {
     updatePlanMutation.mutate();
   }
 
+  async function handleExport(format: 'markdown' | 'json' | 'pdf') {
+    if (!data) {
+      return;
+    }
+
+    if (typeof window === 'undefined') {
+      toast({ status: 'error', title: '导出失败', description: '当前环境不支持文件导出。' });
+      return;
+    }
+
+    try {
+      const safeTitle = buildSafeFileName(data.plan.title ?? 'travel_plan');
+      const dateStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const baseName = `${safeTitle}_${dateStamp}`;
+      const exportContext = {
+        expensesSummary,
+        expenses: expenses ?? null
+      } as const;
+
+      if (format === 'markdown') {
+        const markdown = buildPlanMarkdown(data, exportContext);
+        triggerDownload(`${baseName}.md`, markdown, 'text/markdown;charset=utf-8');
+        toast({ status: 'success', title: '已导出 Markdown' });
+        return;
+      }
+
+      if (format === 'json') {
+        const json = buildPlanJson(data, exportContext);
+        triggerDownload(`${baseName}.json`, json, 'application/json;charset=utf-8');
+        toast({ status: 'success', title: '已导出 JSON' });
+        return;
+      }
+
+      await exportPlanAsPdf(data, exportContext, `${baseName}.pdf`);
+      toast({ status: 'success', title: 'PDF 已准备就绪' });
+    } catch (exportError) {
+      const description = exportError instanceof Error ? exportError.message : '导出失败，请稍后再试。';
+      toast({ status: 'error', title: '导出失败', description });
+    }
+  }
+
   async function handleDelete() {
     if (!planId) {
       return;
@@ -583,7 +703,7 @@ export default function PlanDetailPage() {
               </FormControl>
             </SimpleGrid>
 
-            <Stack direction={{ base: 'column', sm: 'row' }} spacing={3}>
+            <Stack direction={{ base: 'column', sm: 'row' }} spacing={3} align={{ base: 'stretch', sm: 'center' }}>
               <Button
                 type="submit"
                 colorScheme="cyan"
@@ -603,6 +723,27 @@ export default function PlanDetailPage() {
               <Button variant="ghost" onClick={() => refetch()} isDisabled={updatePlanMutation.isPending}>
                 恢复最新数据
               </Button>
+              <Menu>
+                <MenuButton
+                  as={Button}
+                  variant="outline"
+                  leftIcon={<Icon as={Download} boxSize={4} />}
+                  isDisabled={!data}
+                >
+                  导出行程
+                </MenuButton>
+                <MenuList>
+                  <MenuItem icon={<Icon as={FileText} boxSize={4} />} onClick={() => { void handleExport('markdown'); }}>
+                    导出为 Markdown
+                  </MenuItem>
+                  <MenuItem icon={<Icon as={FileJson} boxSize={4} />} onClick={() => { void handleExport('json'); }}>
+                    导出为 JSON
+                  </MenuItem>
+                  <MenuItem icon={<Icon as={FileDown} boxSize={4} />} onClick={() => { void handleExport('pdf'); }}>
+                    导出为 PDF
+                  </MenuItem>
+                </MenuList>
+              </Menu>
             </Stack>
           </Box>
         </CardBody>
@@ -848,4 +989,337 @@ function formatDurationSeconds(seconds: number): string {
   }
 
   return `${minutes} 分 ${remainingSeconds.toString().padStart(2, '0')} 秒`;
+}
+
+function triggerDownload(fileName: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function buildSafeFileName(value: string): string {
+  const normalized = value
+    .normalize('NFKD')
+    .replace(/[^0-9a-zA-Z-_]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .toLowerCase();
+  return normalized || 'travel_plan';
+}
+
+function formatDateRangeText(start: string | null | undefined, end: string | null | undefined): string | null {
+  const formatter = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  const toText = (value: string | null | undefined) => {
+    if (!value) {
+      return null;
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return formatter.format(date);
+  };
+
+  const startText = toText(start);
+  const endText = toText(end);
+
+  if (startText && endText) {
+    return `${startText} ~ ${endText}`;
+  }
+
+  return startText ?? endText ?? null;
+}
+
+function buildPlanMarkdown(
+  detail: PlanDetail,
+  options: {
+    expensesSummary?: { total: number; count: number; latest: string | null } | null;
+    expenses?: ExpenseRecord[] | null;
+  }
+): string {
+  const lines: string[] = [];
+  const dateRangeText = formatDateRangeText(detail.plan.start_date, detail.plan.end_date);
+  const partySizeText =
+    typeof detail.plan.party_size === 'number' && Number.isFinite(detail.plan.party_size)
+      ? `${detail.plan.party_size} 人`
+      : '未设置';
+  const budgetText = formatCurrency(
+    typeof detail.plan.budget === 'number' ? detail.plan.budget : detail.totalActivityBudget,
+    detail.plan.currency
+  );
+
+  lines.push(`# ${detail.plan.title}`);
+  lines.push('');
+  lines.push(`- 目的地：${detail.plan.destination ?? '待确认'}`);
+  if (dateRangeText) {
+    lines.push(`- 行程日期：${dateRangeText}`);
+  }
+  lines.push(`- 同行人数：${partySizeText}`);
+  lines.push(`- 预算总额：${budgetText}`);
+
+  if (options.expensesSummary) {
+    const spentText = formatCurrency(options.expensesSummary.total, detail.plan.currency);
+    const latestText = options.expensesSummary.latest ? formatDateTime(options.expensesSummary.latest) : null;
+    lines.push(`- 已记录开销：${spentText}（${options.expensesSummary.count} 条）`);
+    if (latestText) {
+      lines.push(`- 最近记账：${latestText}`);
+    }
+  }
+
+  lines.push('');
+  lines.push('## 每日行程');
+
+  detail.days.forEach((day) => {
+    const summary = day.summary?.trim();
+    lines.push('');
+    lines.push(`### 第 ${day.day} 天${summary ? `：${summary}` : ''}`);
+
+    if (day.activities.length === 0) {
+      lines.push('- 暂无安排');
+      return;
+    }
+
+    day.activities.forEach((activity) => {
+      const metaParts: string[] = [];
+      if (activity.startTime || activity.endTime) {
+        const start = activity.startTime ?? '';
+        const end = activity.endTime ?? '';
+        metaParts.push([start, end].filter(Boolean).join(' - '));
+      } else if (activity.timeSlot) {
+        metaParts.push(activity.timeSlot);
+      }
+      if (activity.city) {
+        metaParts.push(activity.city);
+      }
+
+      const meta = metaParts.length > 0 ? `（${metaParts.join(' · ')}）` : '';
+      const budgetPart =
+        typeof activity.budget === 'number'
+          ? `，预算 ${formatCurrency(activity.budget, detail.plan.currency)}`
+          : '';
+      const descriptionPart = activity.description ? ` - ${activity.description}` : '';
+
+      lines.push(`- **${activity.title}**${meta}${budgetPart}${descriptionPart}`);
+    });
+  });
+
+  if (options.expensesSummary || (options.expenses && options.expenses.length > 0)) {
+    lines.push('');
+    lines.push('## 费用概览');
+
+    if (options.expensesSummary) {
+      const spentText = formatCurrency(options.expensesSummary.total, detail.plan.currency);
+      const latestText = options.expensesSummary.latest ? formatDateTime(options.expensesSummary.latest) : null;
+      lines.push('');
+      lines.push(`- 总开销：${spentText}`);
+      lines.push(`- 记录条数：${options.expensesSummary.count}`);
+      if (latestText) {
+        lines.push(`- 最近记账：${latestText}`);
+      }
+    }
+
+    if (options.expenses && options.expenses.length > 0) {
+      lines.push('');
+      lines.push('| 时间 | 金额 | 分类 | 备注 |');
+      lines.push('| --- | --- | --- | --- |');
+      options.expenses.forEach((expense) => {
+        const timeText = formatDateTime(expense.timestamp ?? expense.created_at);
+        const amountText = formatCurrency(expense.amount, expense.currency ?? detail.plan.currency);
+        const categoryText = expense.category ?? '-';
+        const notesText = (expense.notes ?? '-').replace(/\|/g, '/').replace(/\n/g, ' ');
+        lines.push(`| ${timeText} | ${amountText} | ${categoryText} | ${notesText} |`);
+      });
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function buildPlanJson(
+  detail: PlanDetail,
+  options: {
+    expenses?: ExpenseRecord[] | null;
+  }
+): string {
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    plan: detail.plan,
+    days: detail.days,
+    totalActivityBudget: detail.totalActivityBudget,
+    expenses: options.expenses ?? []
+  };
+
+  return JSON.stringify(payload, null, 2);
+}
+
+async function exportPlanAsPdf(
+  detail: PlanDetail,
+  options: {
+    expensesSummary?: { total: number; count: number; latest: string | null } | null;
+    expenses?: ExpenseRecord[] | null;
+  },
+  fileName: string
+): Promise<void> {
+  const { jsPDF } = await import('jspdf');
+
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 48;
+  const marginTop = 60;
+  const marginBottom = 60;
+  const contentWidth = pageWidth - marginX * 2;
+  let cursorY = marginTop;
+  const activeFont = CHINESE_FONT_CONFIG.fontName;
+
+  await ensureChineseFont(doc);
+
+  const ensureSpace = (height: number) => {
+    if (cursorY + height > pageHeight - marginBottom) {
+      doc.addPage();
+      cursorY = marginTop;
+    }
+  };
+
+  const addHeading = (text: string, fontSize: number, gap = 16) => {
+    doc.setFont(activeFont, 'normal');
+    doc.setFontSize(fontSize);
+    ensureSpace(fontSize);
+    doc.text(text, marginX, cursorY);
+    cursorY += fontSize + gap;
+  };
+
+  const addParagraph = (text: string, fontSize = 12, gap = 10) => {
+    doc.setFont(activeFont, 'normal');
+    doc.setFontSize(fontSize);
+    const lines = doc.splitTextToSize(text, contentWidth);
+    lines.forEach((line: string) => {
+      ensureSpace(fontSize * 1.35);
+      doc.text(line, marginX, cursorY);
+      cursorY += fontSize * 1.35;
+    });
+    cursorY += gap;
+  };
+
+  const addKeyValue = (items: Array<{ label: string; value: string }>) => {
+    items.forEach(({ label, value }) => {
+      addParagraph(`${label}：${value}`, 12, 6);
+    });
+  };
+
+  const addBulletList = (items: string[]) => {
+    items.forEach((item) => {
+      doc.setFont(activeFont, 'normal');
+      doc.setFontSize(12);
+      const lines = doc.splitTextToSize(item, contentWidth - 16);
+      lines.forEach((line: string, index: number) => {
+        ensureSpace(16);
+        if (index === 0) {
+          doc.text('•', marginX, cursorY);
+          doc.text(line, marginX + 14, cursorY);
+        } else {
+          doc.text(line, marginX + 14, cursorY);
+        }
+        cursorY += 16;
+      });
+      cursorY += 4;
+    });
+  };
+
+  const generatedAt = formatDateTime(new Date().toISOString());
+  const dateRangeText = formatDateRangeText(detail.plan.start_date, detail.plan.end_date);
+  const partySizeText =
+    typeof detail.plan.party_size === 'number' && Number.isFinite(detail.plan.party_size)
+      ? `${detail.plan.party_size} 人`
+      : '未设置';
+  const budgetText = formatCurrency(
+    typeof detail.plan.budget === 'number' ? detail.plan.budget : detail.totalActivityBudget,
+    detail.plan.currency
+  );
+
+  addHeading(detail.plan.title, 20, 12);
+  addParagraph(`导出时间：${generatedAt}`, 11, 6);
+  addKeyValue([
+    { label: '目的地', value: detail.plan.destination ?? '待确认' },
+    ...(dateRangeText ? [{ label: '行程日期', value: dateRangeText }] : []),
+    { label: '同行人数', value: partySizeText },
+    { label: '预算总额', value: budgetText }
+  ]);
+
+  addHeading('每日行程', 16, 12);
+  detail.days.forEach((day, index) => {
+    const summary = day.summary?.trim();
+    addHeading(`第 ${day.day} 天${summary ? `：${summary}` : ''}`, 14, 8);
+
+    if (day.activities.length === 0) {
+      addParagraph('暂无安排', 12, 8);
+    } else {
+      const items = day.activities.map((activity) => {
+        const metaParts: string[] = [];
+        if (activity.startTime || activity.endTime) {
+          const start = activity.startTime ?? '';
+          const end = activity.endTime ?? '';
+          metaParts.push([start, end].filter(Boolean).join(' - '));
+        } else if (activity.timeSlot) {
+          metaParts.push(activity.timeSlot);
+        }
+        if (activity.city) {
+          metaParts.push(activity.city);
+        }
+
+        const meta = metaParts.length > 0 ? `（${metaParts.join(' · ')}）` : '';
+        const budgetPart =
+          typeof activity.budget === 'number'
+            ? `，预算 ${formatCurrency(activity.budget, detail.plan.currency)}`
+            : '';
+        const descriptionPart = activity.description ? ` - ${activity.description}` : '';
+        return `${activity.title}${meta}${budgetPart}${descriptionPart}`;
+      });
+
+      addBulletList(items);
+    }
+
+    if (index < detail.days.length - 1) {
+      cursorY += 8;
+    }
+  });
+
+  addHeading('费用概览', 16, 12);
+  if (options.expensesSummary) {
+    const spentText = formatCurrency(options.expensesSummary.total, detail.plan.currency);
+    const latestText = options.expensesSummary.latest ? formatDateTime(options.expensesSummary.latest) : '暂无';
+    addKeyValue([
+      { label: '总开销', value: spentText },
+      { label: '记录条数', value: String(options.expensesSummary.count) },
+      { label: '最近记账', value: latestText }
+    ]);
+  } else {
+    addParagraph('暂无开销统计。', 12, 8);
+  }
+
+  if (options.expenses && options.expenses.length > 0) {
+    addParagraph('详细记录：', 12, 6);
+    options.expenses.forEach((expense) => {
+      const timeText = formatDateTime(expense.timestamp ?? expense.created_at);
+      const amountText = formatCurrency(expense.amount, expense.currency ?? detail.plan.currency);
+      const categoryText = expense.category ?? '-';
+      const notesText = (expense.notes ?? '-').replace(/\s+/g, ' ').trim();
+      const line = `${timeText} ｜ ${amountText} ｜ ${categoryText} ｜ ${notesText}`;
+      addParagraph(line, 11, 4);
+    });
+  }
+
+  doc.save(fileName);
 }

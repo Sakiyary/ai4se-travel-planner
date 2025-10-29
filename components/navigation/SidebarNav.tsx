@@ -4,7 +4,7 @@ import { Box, Icon, Link, Stack, Text } from '@chakra-ui/react';
 import NextLink from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { LucideIcon } from 'lucide-react';
-import { Compass, HandCoins, Home, Languages } from 'lucide-react';
+import { Compass, HandCoins, Home, User } from 'lucide-react';
 import { ROUTES } from '../../lib/constants';
 
 interface NavItem {
@@ -17,7 +17,7 @@ const navItems: NavItem[] = [
   { label: '总览', href: ROUTES.DASHBOARD, icon: Home },
   { label: '行程规划', href: ROUTES.PLANNER, icon: Compass },
   { label: '预算与支出', href: ROUTES.EXPENSES, icon: HandCoins },
-  { label: '语言与语音', href: '/voice', icon: Languages }
+  { label: '个人资料', href: ROUTES.PROFILE, icon: User }
 ];
 
 export function SidebarNav() {

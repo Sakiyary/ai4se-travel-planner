@@ -29,6 +29,11 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { ExpenseForm } from '../../components/expenses/ExpenseForm';
 import { ExpenseList } from '../../components/expenses/ExpenseList';
+import {
+  ExpenseQuickAddModal,
+  type ExpenseQuickAddDefaults
+} from '../../components/expenses/ExpenseQuickAddModal';
+import { VoiceUpload } from '../../components/planner/VoiceUpload';
 import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
 import {
   createExpense,
@@ -39,6 +44,7 @@ import {
   type PlanRecord
 } from '../../lib/supabaseQueries';
 import { ROUTES } from '../../lib/constants';
+import { parseExpenseFromTranscript } from '../../lib/voiceExpenseParser';
 
 type DailyBreakdownItem = {
   date: string;
@@ -53,6 +59,9 @@ export default function ExpensesPage() {
   const { session, isLoading: isAuthLoading } = useSupabaseAuth();
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [voiceDefaults, setVoiceDefaults] = useState<ExpenseQuickAddDefaults | null>(null);
+  const [lastVoiceTranscript, setLastVoiceTranscript] = useState('');
 
   useEffect(() => {
     if (!isAuthLoading && !session) {
@@ -193,6 +202,14 @@ export default function ExpensesPage() {
     return Math.max(...categoryBreakdown.map((item) => item.amount), 1);
   }, [categoryBreakdown]);
 
+  useEffect(() => {
+    if (!selectedPlanId) {
+      setIsVoiceModalOpen(false);
+      setVoiceDefaults(null);
+      setLastVoiceTranscript('');
+    }
+  }, [selectedPlanId]);
+
   if (isAuthLoading || (!session && typeof window !== 'undefined')) {
     return (
       <Stack spacing={4} align="center" justify="center" minH="50vh">
@@ -293,10 +310,87 @@ export default function ExpensesPage() {
     }
   }
 
+  function ensurePlanSelected(): boolean {
+    if (!selectedPlanId) {
+      toast({ status: 'warning', title: '请先选择旅行计划，再使用语音记账。' });
+      return false;
+    }
+    return true;
+  }
+
+  async function handleVoiceAudioProcessed(payload: {
+    blob: Blob;
+    transcript: string;
+    durationMs?: number | null;
+    source: 'upload' | 'recording';
+  }) {
+    if (!ensurePlanSelected()) {
+      return;
+    }
+
+    const transcript = payload.transcript.trim();
+    if (!transcript) {
+      toast({ status: 'warning', title: '语音转写为空', description: '请重新录制或上传更清晰的语音。' });
+      return;
+    }
+
+    const parsed = parseExpenseFromTranscript(transcript);
+    setVoiceDefaults({
+      amount: parsed.amount,
+      currency: parsed.currency || selectedPlan?.currency || 'CNY',
+      category: parsed.category,
+      method: parsed.method,
+      notes: parsed.notes
+    });
+    setLastVoiceTranscript(parsed.notes ?? transcript);
+    setIsVoiceModalOpen(true);
+  }
+
+  async function handleSubmitVoiceExpense(values: {
+    amount: number;
+    currency: string;
+    category: string | null;
+    method: string | null;
+    notes: string | null;
+    timestamp: string;
+  }) {
+    if (!selectedPlanId) {
+      throw new Error('请选择一个旅行计划。');
+    }
+
+    let isoTimestamp: string | undefined;
+    if (values.timestamp) {
+      const parsed = new Date(values.timestamp);
+      if (!Number.isNaN(parsed.getTime())) {
+        isoTimestamp = parsed.toISOString();
+      }
+    }
+
+    try {
+      await createExpenseMutation.mutateAsync({
+        planId: selectedPlanId,
+        amount: values.amount,
+        currency: values.currency,
+        category: values.category,
+        method: values.method,
+        notes: values.notes ?? lastVoiceTranscript,
+        timestamp: isoTimestamp
+      });
+      toast({ status: 'success', title: '语音记账已保存' });
+      setIsVoiceModalOpen(false);
+      setVoiceDefaults(null);
+      setLastVoiceTranscript('');
+    } catch (error) {
+      const description = error instanceof Error ? error.message : '保存费用记录失败，请稍后再试。';
+      toast({ status: 'error', title: '保存失败', description });
+      throw error;
+    }
+  }
+
   return (
     <Stack spacing={6} pb={10} maxW="6xl">
       <Heading size="lg">费用预算与管理</Heading>
-      <Text color="gray.600">选择旅行计划后，可记录和查看实际开销，后续将支持语音记账与图表分析。</Text>
+      <Text color="gray.600">选择旅行计划后，可通过语音或表单快速记账，并查看各类开销分析。</Text>
 
       <Card variant="outline">
         <CardHeader>
@@ -356,6 +450,34 @@ export default function ExpensesPage() {
                 </Alert>
               ) : null
             ) : null}
+          </CardBody>
+        </Card>
+      ) : null}
+
+      {selectedPlan ? (
+        <Card variant="outline">
+          <CardHeader>
+            <Heading size="md">语音快速记账</Heading>
+          </CardHeader>
+          <CardBody>
+            <Stack spacing={4}>
+              <Text fontSize="sm" color="gray.600">
+                上传语音文件或直接录制，系统会尝试识别金额、分类与支付方式，提交前可在弹窗中微调。
+              </Text>
+              <VoiceUpload
+                onTranscript={(value) => setLastVoiceTranscript(value)}
+                onAudioProcessed={(payload) => void handleVoiceAudioProcessed(payload)}
+                isBusy={createExpenseMutation.isPending}
+              />
+              {lastVoiceTranscript ? (
+                <Alert status="info" variant="left-accent">
+                  <AlertIcon />
+                  <AlertDescription fontSize="sm">
+                    语音转写：{lastVoiceTranscript}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+            </Stack>
           </CardBody>
         </Card>
       ) : null}
@@ -456,6 +578,27 @@ export default function ExpensesPage() {
           )}
         </CardBody>
       </Card>
+
+      <ExpenseQuickAddModal
+        isOpen={Boolean(isVoiceModalOpen && selectedPlan)}
+        onClose={() => {
+          if (!createExpenseMutation.isPending) {
+            setIsVoiceModalOpen(false);
+            setVoiceDefaults(null);
+            setLastVoiceTranscript('');
+          }
+        }}
+        defaults={voiceDefaults ?? {
+          amount: null,
+          currency: selectedPlan?.currency ?? 'CNY',
+          category: null,
+          method: null,
+          notes: lastVoiceTranscript
+        }}
+        planCurrency={selectedPlan?.currency ?? null}
+        onSubmit={handleSubmitVoiceExpense}
+        isSubmitting={createExpenseMutation.isPending}
+      />
     </Stack>
   );
 }
