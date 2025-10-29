@@ -49,3 +49,6 @@ coverage/
 # Docker artifacts
 .docker/
 **/docker-compose.override.yml
+
+# PCM audio files
+*.pcm

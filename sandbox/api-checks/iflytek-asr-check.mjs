@@ -46,7 +46,7 @@ const signatureSha = crypto
   .createHmac('sha256', apiSecret)
   .update(signatureOrigin)
   .digest('base64');
-const authorizationOrigin = `api_key=\"${apiKey}\", algorithm=\"hmac-sha256\", headers=\"host date request-line\", signature=\"${signatureSha}\"`;
+const authorizationOrigin = `api_key="${apiKey}", algorithm="hmac-sha256", headers="host date request-line", signature="${signatureSha}"`;
 const authorization = Buffer.from(authorizationOrigin).toString('base64');
 const wsUrl = `wss://${HOST}/v2/iat?authorization=${encodeURIComponent(authorization)}&date=${encodeURIComponent(date)}&host=${encodeURIComponent(HOST)}`;
 

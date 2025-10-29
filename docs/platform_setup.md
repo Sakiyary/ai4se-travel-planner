@@ -15,6 +15,7 @@
 - **注意事项**：
   - 免费额度有限，注意控制调用频率。
   - 需在后台绑定服务器 IP 或配置白名单，避免被判定为异常调用。
+  - 当前实现直接在前端通过 WebSocket 调用语音听写 API，部署时需知 AppID / API Key / API Secret 会在客户端暴露。
 
 ## 2. 阿里云百炼·通义千问（DashScope）
 
@@ -40,11 +41,9 @@
   - Storage Bucket（用于语音/行程导出）
 - **申请步骤**：
   1. 访问 [https://supabase.com/](https://supabase.com/)，注册后创建新项目。
-  2. 在 Project Settings → API 页面复制 Project URL、anon key、service_role key。
-  3. 在 Authentication 模块配置邮件或第三方登录，并开启行级安全（RLS）。
-  4. 在 Storage 模块创建 `voice-notes`、`plan-exports` 等 Bucket。
+  2. 在 Project Settings → API 页面复制 Project URL、anon key。
+  3. 在 Storage 模块创建 `voice-notes`、`plan-exports` 等 Bucket。
 - **注意事项**：
-  - RLS 策略必须配置，避免数据泄露。
   - Service Role 密钥仅存储于服务器端环境变量，不得写入客户端。
 
 ## 4. 高德开放平台
@@ -56,7 +55,7 @@
 - **申请步骤**：
   1. 登录 [https://lbs.amap.com/](https://lbs.amap.com/)，完成企业或个人认证。
   2. 在控制台创建“Web 端（JS API）”与“Web 服务”应用，分别获取两个 Key。
-  3. 为 Web 端 Key 配置域名白名单（如 `localhost`、正式域名）。
+  3. 为 Web 端 Key 配置域名白名单（如 `localhost`、正式域名），此处为方便助教批改，均留空。
 - **注意事项**：
   - Web 服务 Key 不应暴露在前端。
   - 调用频率受套餐限制，确保缓存策略有效降低请求次数。
@@ -112,7 +111,9 @@
 | 环境变量 | 来源平台 | 用途 |
 | --- | --- | --- |
 | `SUPABASE_URL` | Supabase | 数据库与认证接口地址 |
-| `SUPABASE_ANON_KEY` | Supabase | 前端访问匿名密钥 |
+| `SUPABASE_ANON_KEY` | Supabase | 匿名访问密钥（前端与服务端共用） |
+| `SUPABASE_VOICE_BUCKET` | Supabase | 存放语音文件（voice-notes）的 Bucket 名称 |
+| `SUPABASE_EXPORT_BUCKET` | Supabase | 存放行程导出文件（JSON 等）的 Bucket 名称 |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase | 服务端使用的高权限密钥 |
 | `DASHSCOPE_API_KEY` | 阿里云 DashScope | 调用通义千问 API |
 | `IFLYTEK_APP_ID` | 科大讯飞 | 语音服务应用 ID |
@@ -120,8 +121,8 @@
 | `IFLYTEK_API_SECRET` | 科大讯飞 | 语音识别密钥 |
 | `AMAP_WEB_KEY` | 高德开放平台 | 前端地图渲染 Key |
 | `AMAP_SERVICE_KEY` | 高德开放平台 | 服务器端 POI/路线请求 Key |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase | Next.js 前端读取 Supabase 地址 |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase | Next.js 前端读取匿名密钥 |
+
+> Next.js 通过 `next.config.mjs` 将上表中的服务器变量映射到 `NEXT_PUBLIC_*` 前缀，方便客户端读取，无需重复配置。
 
 ## 9. 申请进度追踪模板
 

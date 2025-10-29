@@ -94,7 +94,7 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
 - 前端使用 Supabase 匿名密钥并受 RLS 约束；Service Role 密钥仅用于数据库迁移脚本和 CI 任务，不会进入客户端。
 - 语音文件通过临时签名的 Supabase Storage URL 上传，限制有效期。
 - 提示词输入做净化以缓解提示注入，并使用 `zod` 校验模型输出后再入库。
-- DashScope API Key 通过 Docker 环境变量注入构建产物，配合 Referer 白名单限制调用；正式环境建议增加独立代理以避免密钥外泄。
+- DashScope API Key 通过 Docker 环境变量注入运行容器；课程环境直接在客户端调用，如投入生产建议改为服务端代理以避免密钥外泄。
 
 ## 11. 部署与 DevOps
 
