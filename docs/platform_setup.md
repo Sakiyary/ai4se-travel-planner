@@ -4,16 +4,14 @@
 
 ## 1. 科大讯飞开放平台
 
-- **用途**：语音识别（ASR）与语音合成（TTS）。
+- **用途**：语音识别（ASR）。
 - **必备资源**：
   - 应用 ID（AppID）
   - API Key（语音识别）
   - API Secret（语音识别）
-  - 语音合成专用 API Key / Secret（若开启 TTS）
 - **申请步骤**：
   1. 访问 [https://www.xfyun.cn/](https://www.xfyun.cn/)，注册并完成实名认证。
   2. 创建语音听写（流式版）应用，获取 ASR 所需的 AppID、API Key、API Secret。
-  3. 若需要语音合成，在“语音合成”服务中新建应用并开通对应套餐。
 - **注意事项**：
   - 免费额度有限，注意控制调用频率。
   - 需在后台绑定服务器 IP 或配置白名单，避免被判定为异常调用。
@@ -34,7 +32,7 @@
 
 ## 3. Supabase
 
-- **用途**：用户认证、Postgres 数据库、对象存储、Edge Functions。
+- **用途**：用户认证、Postgres 数据库、对象存储。
 - **必备资源**：
   - Supabase 项目 URL
   - 匿名密钥（anon key）
@@ -120,8 +118,6 @@
 | `IFLYTEK_APP_ID` | 科大讯飞 | 语音服务应用 ID |
 | `IFLYTEK_API_KEY` | 科大讯飞 | 语音识别密钥 |
 | `IFLYTEK_API_SECRET` | 科大讯飞 | 语音识别密钥 |
-| `IFLYTEK_TTS_API_KEY` | 科大讯飞 | 语音合成密钥（如启用） |
-| `IFLYTEK_TTS_API_SECRET` | 科大讯飞 | 语音合成密钥（如启用） |
 | `AMAP_WEB_KEY` | 高德开放平台 | 前端地图渲染 Key |
 | `AMAP_SERVICE_KEY` | 高德开放平台 | 服务器端 POI/路线请求 Key |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase | Next.js 前端读取 Supabase 地址 |

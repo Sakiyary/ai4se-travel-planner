@@ -19,13 +19,12 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
 | UI 框架 | **Chakra UI + Tailwind CSS** | 快速构建组件，具备可访问性默认值，便于打造旅游视觉风格。 |
 | 状态管理 | **React Query (TanStack Query)** | 简化无服务器场景的数据获取、缓存与同步。 |
 | 语音识别 | **科大讯飞语音识别 API** | 普通话识别准确，SDK 完善，按量计费。 |
-| 语音合成（可选） | **科大讯飞语音合成 API** | 为行程结果提供语音播报与确认。 |
 | 地图与 POI | **高德地图 Web JS API** | 覆盖全国，POI 检索与路线规划能力强。 |
 | 认证与数据库 | **Supabase（Auth + Postgres）** | 托管认证+社交登录，Postgres 提供行级安全，客户端 SDK 易用。 |
 | 对象存储 | **Supabase Storage** | 用于存储行程导出、上传票据与语音笔记。 |
 | 行程规划与预算 | **阿里云通义千问 DashScope (Qwen-Plus)** | 与助教批改时的密钥兼容，具备本地化知识与预算估算优势。 |
-| 后端运行时 | **Next.js API Routes（Node.js 20）** | 与前端同仓维护，可在 Docker 中运行，后续可平滑迁移至 Supabase Edge Functions。 |
-| 费用分析 | **Supabase Postgres 函数 + Edge Functions** | 无需独立后端即可实现轻量级聚合。 |
+| 运行方式 | **Next.js 15 静态导出 + Node.js 运行容器** | 仅托管前端与静态资源，不配置自定义 API，Docker 镜像用于评分演示。 |
+| 费用分析 | **前端预算引擎（TypeScript）+ Supabase SQL 视图** | 在浏览器端计算预算拆分，必要时通过数据库视图做汇总。 |
 | CI/CD | **GitHub Actions** | 自动化执行 lint/测试/构建，构建 Docker 镜像并推送至阿里云镜像仓库。 |
 | 容器化 | **Docker（多阶段 Node 20 Alpine）** | 生成便于评分或自托管的可移植镜像。 |
 
@@ -34,11 +33,10 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
 ```text
 [客户端浏览器]
   |-- Next.js 应用（React + Chakra UI） --|        |-- Supabase 认证（JWT）
-  |                                       --> API 层（Next.js API Routes / Node.js 运行时）
-  |-- 语音录制（Web Speech API 封装）           --> 科大讯飞 ASR/TTS
+  |                                       --> Supabase Postgres / Storage
+  |-- 语音录制（Web Speech API 封装）           --> 科大讯飞 ASR
   |-- 地图画布（高德 JS SDK）                    --> 通义千问 LLM (Qwen-Plus)
-  |                                              --> Supabase（Postgres + Storage）
-  |                                              --> Supabase Edge Functions（费用分析）
+  |                                              --> 高德在线服务（POI / 路线）
 ```
 
 ## 5. 模块划分
@@ -50,17 +48,11 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
   - 样式：Chakra 主题扩展 + Tailwind 工具类组合布局。
   - 客户端校验：`react-hook-form` 搭配 `zod` Schema。
 
-- **后端 API（Next.js `/api` 路由）**
-  - `POST /api/auth/callback`：交换 Supabase 认证令牌。
-  - `POST /api/planner/generate`：编排 DashScope 提示词，整合高德 POI 数据并写入 Supabase。
-  - `POST /api/speech/transcribe`：上传语音切片至科大讯飞并返回文本，同时将转写缓存至 Supabase Storage。
-  - `POST /api/expenses/record`：写入费用条目，触发 Supabase Edge Function 汇总分类。
-  - `GET /api/plans/:planId`：读取行程、POI 与费用数据。
-  - 共用工具：Supabase 服务端客户端、密钥管理、提示模板。
-
-- **Supabase Edge Functions**
-  - `expenses-rollup`：按日刷新费用类别聚合数据。
-  - `plan-sharing`：生成行程只读分享的签名链接。
+- **前端数据服务层**
+  - `services/llm.ts`：封装 DashScope 请求与提示模板。
+  - `services/speech.ts`：管理科大讯飞 SDK 调用与音频上传逻辑。
+  - `services/storage.ts`：使用 Supabase JS 客户端读写计划、费用、语音笔记。
+  - `stores/expenses.ts`：通过 React Query + Zustand 缓存费用数据并在前端聚合。
 
 ## 6. 数据模型（Supabase Postgres）
 
@@ -85,25 +77,24 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
 ## 8. 语音交互流程
 
 1. 用户通过浏览器 MediaRecorder 录音。
-2. 语音切片上传至 `POST /api/speech/transcribe`。
-3. 无服务器函数转发至科大讯飞 ASR 并获取文本。
-4. 将转写结果返回前端，可选存入 `voice_notes` 并生成临时签名 URL。
+2. 前端使用科大讯飞 Web API（WebSocket/HTTP）上传音频切片。
+3. 浏览器端接收转写文本，并在本地做轻量清洗与截断。
+4. 将音频文件与转写结果通过 Supabase Storage / 数据库保存，以便多端同步。
 5. 前端展示转写文本，允许编辑后触发行程生成。
-
-可选的 TTS：行程更新时，调用 `POST /api/speech/synthesize` 返回播报链接，使用科大讯飞语音合成播放。
 
 ## 9. 地图集成
 
 - 在 `MapView` 组件内嵌高德 Web JS SDK。
-- 无服务器辅助接口 `GET /api/poi/search` 将 POI 结果缓存至 Supabase，降低 API 调用频率。
+- 通过 React Query + 高德 Web JS API 进行 POI 查询，并在 IndexedDB 中缓存结果以降低重复请求。
 - 行程段落包含 `location_id` 字段，映射高德 POI 以支持地图高亮。
 
 ## 10. 安全与密钥管理
 
 - 在 `.env` 与 `.env.local` 中管理敏感配置，并通过 Docker 环境变量（或 Compose 文件）映射到容器运行时。
-- 前端使用 Supabase 匿名密钥并受 RLS 约束；无服务器函数在受保护的运行时内使用 Service Role 密钥。
+- 前端使用 Supabase 匿名密钥并受 RLS 约束；Service Role 密钥仅用于数据库迁移脚本和 CI 任务，不会进入客户端。
 - 语音文件通过临时签名的 Supabase Storage URL 上传，限制有效期。
 - 提示词输入做净化以缓解提示注入，并使用 `zod` 校验模型输出后再入库。
+- DashScope API Key 通过 Docker 环境变量注入构建产物，配合 Referer 白名单限制调用；正式环境建议增加独立代理以避免密钥外泄。
 
 ## 11. 部署与 DevOps
 
