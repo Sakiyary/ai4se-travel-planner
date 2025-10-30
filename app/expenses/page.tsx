@@ -374,7 +374,8 @@ export default function ExpensesPage() {
         category: values.category,
         method: values.method,
         notes: values.notes ?? lastVoiceTranscript,
-        timestamp: isoTimestamp
+        timestamp: isoTimestamp,
+        source: 'voice-ai'
       });
       toast({ status: 'success', title: '语音记账已保存' });
       setIsVoiceModalOpen(false);

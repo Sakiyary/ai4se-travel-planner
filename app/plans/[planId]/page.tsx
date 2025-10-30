@@ -546,7 +546,8 @@ export default function PlanDetailPage() {
       category: values.category,
       method: values.method,
       notes: values.notes ?? expenseDraft?.defaults?.notes ?? null,
-      timestamp: isoTimestamp
+      timestamp: isoTimestamp,
+      source: 'voice-ai'
     });
   }
 

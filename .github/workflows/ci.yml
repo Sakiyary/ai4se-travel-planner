@@ -12,6 +12,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -20,22 +24,12 @@ jobs:
       SUPABASE_ANON_KEY: public-anon-key
       SUPABASE_VOICE_BUCKET: voice-notes
       SUPABASE_EXPORT_BUCKET: plan-exports
-      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: public-anon-key
-      NEXT_PUBLIC_SUPABASE_VOICE_BUCKET: voice-notes
-      NEXT_PUBLIC_SUPABASE_EXPORT_BUCKET: plan-exports
-      NEXT_PUBLIC_AMAP_KEY: dev-amap-key
-      NEXT_PUBLIC_AMAP_SECURITY_JS_CODE: dev-amap-safe
       AMAP_WEB_KEY: dev-amap-key
       AMAP_SECURITY_JS_CODE: dev-amap-safe
-      NEXT_PUBLIC_IFLYTEK_APP_ID: demo-app-id
-      NEXT_PUBLIC_IFLYTEK_API_KEY: demo-api-key
-      NEXT_PUBLIC_IFLYTEK_API_SECRET: demo-api-secret
       IFLYTEK_APP_ID: demo-app-id
       IFLYTEK_API_KEY: demo-api-key
       IFLYTEK_API_SECRET: demo-api-secret
       DASHSCOPE_API_KEY: demo-dashscope-key
-      NEXT_PUBLIC_DASHSCOPE_API_KEY: demo-dashscope-key
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -75,11 +69,8 @@ jobs:
 
   docker:
     needs: quality
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.ACR_USERNAME && secrets.ACR_PASSWORD
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    env:
-      REGISTRY: registry.cn-hangzhou.aliyuncs.com
-      IMAGE_NAME: ai4se/travel-planner
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -90,18 +81,20 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to container registry
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push image
-        uses: docker/build-push-action@v5
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/${{ github.repository }}/travel-planner:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/travel-planner:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

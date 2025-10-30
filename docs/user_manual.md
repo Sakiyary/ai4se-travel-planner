@@ -49,6 +49,7 @@
 
 - 在“个人资料”页面可编辑昵称、默认币种、默认同行人数等偏好。
 - 提交后数据直接写入 Supabase `profiles` 表，随后刷新计划生成器会自动引用这些默认值。
+- 页面下方展示最近的 AI 操作审计日志，方便核对自动生成的计划、语音记账等事件。
 
 ## 8. 配置项与环境变量
 
@@ -71,8 +72,8 @@
 ## 9. Docker 使用指南
 
 1. 在仓库根目录执行 `docker build -t travel-planner:latest .` 构建镜像。
-2. 准备 `.env` 或 `.env.local`，填入上文所列的环境变量。
-3. 使用 `docker run --env-file .env.local -p 3000:3000 travel-planner:latest` 启动容器，浏览器访问 `http://localhost:3000` 完成验证。
+2. 准备 `.env`，填入上文所列的环境变量。
+3. 使用 `docker run --env-file .env -p 3000:3000 travel-planner:latest` 启动容器，浏览器访问 `http://localhost:3000` 完成验证。
 4. 若部署在云服务器，建议配合反向代理及 HTTPS 证书，以便语音录制可用。
 
 ## 10. 常见问题排查

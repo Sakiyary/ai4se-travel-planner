@@ -26,8 +26,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
 import {
   fetchCurrentProfile,
+  fetchAuditLogs,
   type ProfileRecord,
   type UpdateProfileInput,
+  type AuditLogRecord,
   updateProfile
 } from '../../lib/supabaseQueries';
 
@@ -53,6 +55,13 @@ export default function ProfilePage() {
   const profileQuery = useQuery({
     queryKey: ['profile'],
     queryFn: fetchCurrentProfile,
+    enabled: Boolean(session),
+    staleTime: 60_000
+  });
+
+  const auditLogQuery = useQuery({
+    queryKey: ['audit-logs'],
+    queryFn: () => fetchAuditLogs(15),
     enabled: Boolean(session),
     staleTime: 60_000
   });
@@ -270,6 +279,97 @@ export default function ProfilePage() {
           </Card>
         </Box>
       ) : null}
+
+      {session ? (
+        <Card w="full" maxW="640px">
+          <CardHeader>
+            <Stack spacing={1}>
+              <Heading size="md">AI 操作审计日志</Heading>
+              <Text color="gray.600">展示最近的 AI 行为记录，便于核对自动化操作。</Text>
+            </Stack>
+          </CardHeader>
+          <CardBody>
+            {auditLogQuery.isLoading ? (
+              <Stack direction="row" align="center" spacing={3} color="gray.500">
+                <Spinner size="sm" />
+                <Text>正在获取审计日志...</Text>
+              </Stack>
+            ) : auditLogQuery.error ? (
+              <Alert status="error" variant="left-accent">
+                <AlertIcon />
+                <AlertDescription>
+                  {auditLogQuery.error instanceof Error
+                    ? auditLogQuery.error.message
+                    : '加载审计日志失败，请稍后再试。'}
+                </AlertDescription>
+              </Alert>
+            ) : (auditLogQuery.data ?? []).length === 0 ? (
+              <Text color="gray.600">暂无审计记录，完成 AI 操作后会自动出现条目。</Text>
+            ) : (
+              <Stack spacing={4}>
+                {(auditLogQuery.data ?? []).map((log) => (
+                  <Box key={log.id} borderWidth="1px" borderRadius="md" p={3} borderColor="gray.200">
+                    <Stack spacing={1}>
+                      <Text fontWeight="semibold">{describeAuditAction(log)}</Text>
+                      <Text fontSize="sm" color="gray.600">
+                        {formatAuditTimestamp(log.created_at)}
+                      </Text>
+                      {Object.keys(log.metadata ?? {}).length > 0 ? (
+                        <Text fontSize="sm" color="gray.600" fontFamily="mono" whiteSpace="pre-wrap">
+                          {formatMetadataPreview(log.metadata)}
+                        </Text>
+                      ) : null}
+                    </Stack>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+          </CardBody>
+        </Card>
+      ) : null}
     </Stack>
   );
+}
+
+function describeAuditAction(log: AuditLogRecord): string {
+  switch (log.action) {
+    case 'itinerary.generate':
+      return '生成 AI 行程';
+    case 'plan.saved':
+      return '保存 AI 行程到计划';
+    case 'expense.created.voice':
+      return '语音转费用记录';
+    case 'expense.created':
+      return '新增费用记录';
+    case 'voice_note.created':
+      return '保存语音笔记';
+    default:
+      return log.action;
+  }
+}
+
+function formatAuditTimestamp(value: string): string {
+  try {
+    return new Intl.DateTimeFormat('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+function formatMetadataPreview(metadata: Record<string, unknown>): string {
+  try {
+    const serialized = JSON.stringify(metadata, null, 2);
+    if (serialized.length <= 320) {
+      return serialized;
+    }
+    return `${serialized.slice(0, 317)}...`;
+  } catch {
+    return '[unavailable metadata]';
+  }
 }

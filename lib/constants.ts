@@ -6,7 +6,8 @@ export const SUPABASE_TABLES = {
   PLANS: 'plans',
   PLAN_SEGMENTS: 'plan_segments',
   EXPENSES: 'expenses',
-  VOICE_NOTES: 'voice_notes'
+  VOICE_NOTES: 'voice_notes',
+  AUDIT_LOGS: 'audit_logs'
 } as const;
 
 export const ROUTES = {

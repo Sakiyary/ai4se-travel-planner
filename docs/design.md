@@ -25,7 +25,7 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
 | 行程规划与预算 | **阿里云通义千问 DashScope (Qwen-Plus)** | 与助教批改时的密钥兼容，具备本地化知识与预算估算优势。 |
 | 运行方式 | **Next.js 15 静态导出 + Node.js 运行容器** | 仅托管前端与静态资源，不配置自定义 API，Docker 镜像用于评分演示。 |
 | 费用分析 | **前端预算引擎（TypeScript）+ Supabase SQL 视图** | 在浏览器端计算预算拆分，必要时通过数据库视图做汇总。 |
-| CI/CD | **GitHub Actions** | 自动化执行 lint/测试/构建，构建 Docker 镜像并推送至阿里云镜像仓库。 |
+| CI/CD | **GitHub Actions** | 自动化执行 lint/测试/构建，并将 Docker 镜像推送到 GitHub Container Registry (GHCR)。 |
 | 容器化 | **Docker（多阶段 Node 20 Alpine）** | 生成便于评分或自托管的可移植镜像。 |
 
 ## 4. 高层架构
@@ -44,17 +44,17 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
 - **前端**
   - `app/`（Next.js App Router）路由包括：`login`、`dashboard`、`plans/[planId]`、`planner`、`expenses`、`profile`。
   - 组件：`VoiceInput`、`ItineraryTimeline`、`BudgetSummary`、`MapView`、`ExpenseList`、`PlanCard`、`ExpenseQuickAddModal`（语音笔记一键转费用）。
-  - 用户资料页：`app/profile/page.tsx` 提供昵称、默认币种与默认同行人数的基础表单，写入 Supabase `profiles` 表的偏好字段。
+  - 用户资料页：`app/profile/page.tsx` 提供昵称、默认币种与默认同行人数的基础表单，并展示最近的 `audit_logs` 记录便于追踪 AI 操作。
   - 计划详情页：`app/plans/[planId]/page.tsx` 支持语音笔记、费用联动，并提供 Markdown/JSON/PDF 导出功能。
-  - 自定义 Hook：`usePlanGenerator`、`useSpeech`、`useSupabaseAuth`。
+  - 自定义 Hook：`useSpeech`、`useSupabaseAuth`。
   - 样式：Chakra 主题扩展 + Tailwind 工具类组合布局。
   - 客户端校验：`react-hook-form` 搭配 `zod` Schema。
 
 - **前端数据服务层**
-  - `services/llm.ts`：封装 DashScope 请求与提示模板。
+  - `services/llm.ts`：封装 DashScope 请求与提示模板，并在本地请求成功后追加审计日志。
   - `services/speech.ts`：管理科大讯飞 SDK 调用与音频上传逻辑。
   - `services/storage.ts`：使用 Supabase JS 客户端读写计划、费用、语音笔记。
-  - `stores/expenses.ts`：通过 React Query + Zustand 缓存费用数据并在前端聚合。
+  - `lib/supabaseQueries.ts`：集中封装 Supabase 数据访问与 React Query 使用的查询函数。
 
 ## 6. 数据模型（Supabase Postgres）
 
@@ -93,25 +93,26 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
 
 ## 10. 安全与密钥管理
 
-- 在 `.env` 与 `.env.local` 中管理敏感配置，并通过 Docker 环境变量（或 Compose 文件）映射到容器运行时。
+- 在 `.env` 中管理敏感配置，并通过 Docker 环境变量（或 Compose 文件）映射到容器运行时。
 - 前端使用 Supabase 匿名密钥并受 RLS 约束；Service Role 密钥仅用于数据库迁移脚本和 CI 任务，不会进入客户端。
 - 语音文件通过临时签名的 Supabase Storage URL 上传，限制有效期。
 - 提示词输入做净化以缓解提示注入，并使用 `zod` 校验模型输出后再入库。
 - DashScope API Key 通过 Docker 环境变量注入运行容器；课程环境直接在客户端调用，如投入生产建议改为服务端代理以避免密钥外泄。
+- 关键的 AI 操作（行程生成、保存、语音转费用等）会写入 `audit_logs` 表，以便用户在前端查询审计 trail。
 
 ## 11. 部署与 DevOps
 
 - GitHub Actions 流程：
-  1. 使用 `pnpm` 安装依赖。
+  1. 使用 npm 安装依赖。
   2. 执行 `eslint`、`tsc` 与 `vitest`。
   3. 构建 Next.js 应用并产出 `.next` 目录。
-  4. 构建 Docker 镜像（多阶段 Node 20 Alpine），并推送至阿里云镜像仓库（`registry.cn-hangzhou.aliyuncs.com/ai4se/travel-planner`）。
-  5. 在评分或演示环境中拉取镜像，通过 `docker run` 启动服务。
+  4. 构建 Docker 镜像（多阶段 Node 20 Alpine），并推送至 GitHub Container Registry（`ghcr.io/<owner>/<repo>/travel-planner`）。
+  5. 评分或演示环境可直接拉取 GHCR 镜像，通过 `docker run` 启动服务。
 
 ## 12. 本地开发流程
 
 1. 执行 `pnpm install`。
-2. 复制 `.env.example` 为 `.env.local`，填写 Supabase 匿名密钥、DashScope 密钥、科大讯飞凭据。
+2. 复制 `.env.example` 为 `.env`，填写 Supabase 匿名密钥、DashScope 密钥、科大讯飞凭据。
 3. 运行 `pnpm dev` 启动 Next.js 开发服务器。
 4. 需要离线测试时，可使用 Supabase CLI 的 `supabase start` 启动本地 Postgres。
 5. 使用 `pnpm test` 运行单元测试，核心流程通过 Playwright 做端到端测试。

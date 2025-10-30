@@ -131,6 +131,19 @@ export interface VoiceNoteRecord {
   created_at: string;
 }
 
+export interface AuditLogRecord {
+  id: number;
+  user_id: string | null;
+  action: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface RecordAuditLogInput {
+  action: string;
+  metadata?: Record<string, unknown> | null;
+}
+
 async function getAuthenticatedUser(): Promise<User> {
   if (!supabaseClient) {
     throw new Error('Supabase client not initialized');
@@ -376,6 +389,19 @@ export async function savePlanFromItinerary(options: SavePlanFromItineraryOption
       throw segmentsError;
     }
   }
+
+  await recordAuditLog({
+    action: 'plan.saved',
+    metadata: {
+      planId,
+      title: planPayload.title,
+      destination: planPayload.destination ?? null,
+      totalBudget: planPayload.budget ?? null,
+      partySize: normalizedPartySize,
+      dayCount: options.itinerary.length,
+      activityCount: segments.length
+    }
+  });
 
   return planId;
 }
@@ -774,7 +800,21 @@ export async function createExpense(input: CreateExpenseInput): Promise<ExpenseR
     throw error ?? new Error('创建费用记录失败');
   }
 
-  return normalizeExpense(data as Record<string, unknown>);
+  const normalized = normalizeExpense(data as Record<string, unknown>);
+
+  await recordAuditLog({
+    action: input.source === 'voice-ai' ? 'expense.created.voice' : 'expense.created',
+    metadata: {
+      expenseId: normalized.id,
+      planId: normalized.plan_id,
+      amount: normalized.amount,
+      currency: normalized.currency,
+      source: normalized.source,
+      hasNotes: Boolean(normalized.notes && normalized.notes.trim().length > 0)
+    }
+  });
+
+  return normalized;
 }
 
 export async function deleteExpense(expenseId: string): Promise<void> {
@@ -790,6 +830,125 @@ export async function deleteExpense(expenseId: string): Promise<void> {
   if (error) {
     throw error;
   }
+}
+
+export async function recordAuditLog(input: RecordAuditLogInput): Promise<void> {
+  if (!supabaseClient) {
+    return;
+  }
+
+  const action = typeof input.action === 'string' ? input.action.trim() : '';
+  if (!action) {
+    return;
+  }
+
+  let userId: string;
+  try {
+    const user = await getAuthenticatedUser();
+    userId = user.id;
+  } catch {
+    return;
+  }
+
+  const metadata = sanitizeMetadata(input.metadata ?? {});
+
+  try {
+    const { error } = await supabaseClient
+      .from(SUPABASE_TABLES.AUDIT_LOGS)
+      .insert({
+        user_id: userId,
+        action,
+        metadata
+      });
+
+    if (error && !isSchemaCacheMissing(error)) {
+      throw error;
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[recordAuditLog] Failed to append audit entry', error);
+    }
+  }
+}
+
+export async function fetchAuditLogs(limit = 20): Promise<AuditLogRecord[]> {
+  if (!supabaseClient) {
+    throw new Error('Supabase client not initialized');
+  }
+
+  await getAuthenticatedUser();
+
+  const effectiveLimit = Math.max(1, Math.min(limit, 100));
+
+  const { data, error } = await supabaseClient
+    .from(SUPABASE_TABLES.AUDIT_LOGS)
+    .select('id, user_id, action, metadata, created_at')
+    .order('created_at', { ascending: false })
+    .limit(effectiveLimit);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) => normalizeAuditLog(row as Record<string, unknown>));
+}
+
+function sanitizeMetadata(input: unknown): Record<string, unknown> {
+  if (input === null || input === undefined) {
+    return {};
+  }
+
+  if (Array.isArray(input)) {
+    return { value: input.slice(0, 20) };
+  }
+
+  if (typeof input !== 'object') {
+    return { value: input };
+  }
+
+  try {
+    const serialized = JSON.stringify(input);
+    if (!serialized) {
+      return {};
+    }
+    if (serialized.length > 4000) {
+      return { note: 'metadata too large' };
+    }
+    const parsed = JSON.parse(serialized);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // ignore serialization failures and fall back to empty object
+  }
+
+  return {};
+}
+
+function normalizeAuditLog(row: Record<string, unknown>): AuditLogRecord {
+  const rawMetadata = row.metadata;
+  const metadata =
+    rawMetadata && typeof rawMetadata === 'object' && !Array.isArray(rawMetadata)
+      ? (rawMetadata as Record<string, unknown>)
+      : {};
+
+  let id: number;
+  if (typeof row.id === 'number') {
+    id = row.id;
+  } else if (typeof row.id === 'string') {
+    const parsed = Number.parseInt(row.id, 10);
+    id = Number.isNaN(parsed) ? 0 : parsed;
+  } else {
+    id = 0;
+  }
+
+  return {
+    id,
+    user_id: typeof row.user_id === 'string' ? row.user_id : null,
+    action: typeof row.action === 'string' ? row.action : 'unknown',
+    metadata,
+    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString()
+  } satisfies AuditLogRecord;
 }
 
 export function mapSupabaseError(error: PostgrestError | Error): string {
@@ -856,7 +1015,7 @@ export async function createVoiceNote(input: {
     throw error ?? new Error('创建语音笔记失败');
   }
 
-  return {
+  const normalized = {
     id: String(data.id),
     plan_id: String(data.plan_id),
     storage_path: String(data.storage_path),
@@ -869,6 +1028,18 @@ export async function createVoiceNote(input: {
           : Number(data.duration_seconds),
     created_at: String(data.created_at)
   } satisfies VoiceNoteRecord;
+
+  await recordAuditLog({
+    action: 'voice_note.created',
+    metadata: {
+      noteId: normalized.id,
+      planId: normalized.plan_id,
+      hasTranscript: Boolean(normalized.transcript && normalized.transcript.trim().length > 0),
+      durationSeconds: normalized.duration_seconds
+    }
+  });
+
+  return normalized;
 }
 
 export async function deleteVoiceNote(noteId: string): Promise<void> {

@@ -36,7 +36,7 @@
 ## 4. 技术与配置准备
 
 - 平台密钥：参考 `docs/platform_setup.md`，确保科大讯飞、DashScope、高德、Supabase 等账号及 API Key 可用。
-- 环境文件：准备 `.env.example`，列出前端运行所需变量；实际值放在 `.env.local`（开发）与 `docker/.env`（运行）。
+- 环境文件：准备 `.env.example`，列出前端运行所需变量；实际值统一写入仓库根目录的 `.env`。
 - 代码规范：采用 ESLint + Prettier + TypeScript 严格模式，Tailwind + Chakra 统一 UI 风格。
 - 依赖管理：使用 `pnpm` 统一版本；在 README 中记录常用命令。
 

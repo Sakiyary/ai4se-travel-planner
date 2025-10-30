@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { recordAuditLog } from '../lib/supabaseQueries';
 
 export const itinerarySchema = z.object({
   title: z.union([z.string().min(1), z.null()]).optional(),
@@ -85,7 +86,18 @@ export async function generateItinerary(prompt: string): Promise<ParsedItinerary
     throw new Error('行程解析失败，请检查 LLM 输出格式。');
   }
 
-  return parsed.data;
+  const itinerary = parsed.data;
+
+  await recordAuditLog({
+    action: 'itinerary.generate',
+    metadata: {
+      promptLength: prompt.length,
+      dayCount: itinerary.itinerary?.length ?? 0,
+      totalBudget: itinerary.budget?.total ?? null
+    }
+  });
+
+  return itinerary;
 }
 
 function truncate(value: string, maxLength = 800) {
