@@ -1,6 +1,6 @@
 {
   "name": "ai4se-travel-planner",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "AI 旅行规划师 Web 应用的前端项目框架",
   "scripts": {

@@ -108,7 +108,7 @@ AI 旅行规划师是一款无服务器 Web 应用，旨在简化行程规划流
   2. 执行 `eslint` 与 `tsc`。
   3. 构建 Next.js 应用并产出 `.next` 目录。
   4. 构建 Docker 镜像（多阶段 Node 20 Alpine），并推送至 GitHub Container Registry（`ghcr.io/sakiyary/ai4se-travel-planner`）。
-  5. 评分或演示环境可直接拉取 GHCR 镜像，通过 `docker run` 启动服务。
+  5. 评分或演示环境可直接拉取 GHCR 镜像，执行 `docker run --env-file .env -p 3000:3000 ghcr.io/sakiyary/ai4se-travel-planner:latest` 启动服务。
 
 ## 12. 本地开发流程
 

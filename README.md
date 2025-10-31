@@ -82,8 +82,11 @@ GitHub 会自动提供 `GITHUB_TOKEN` 用于推送到 GHCR，无需额外配置 
 # 构建镜像
 docker build -t travel-planner:latest .
 
-# 运行容器（请确保 .env 中变量齐全）
+# 本地镜像运行（请确保 .env 中变量齐全）
 docker run --env-file .env -p 3000:3000 travel-planner:latest
+
+# 直接使用发布在 GHCR 的镜像
+docker run --env-file .env -p 3000:3000 ghcr.io/sakiyary/ai4se-travel-planner:latest
 ```
 
 镜像特性：
@@ -96,11 +99,12 @@ docker run --env-file .env -p 3000:3000 travel-planner:latest
 ### 使用 Docker Compose
 
 ```bash
-cp .env.example .env   # 先补齐环境变量
-docker compose up -d   # 构建并后台启动
+cp .env.example .env          # 先补齐环境变量
+docker compose pull           # 确保拉取最新 GHCR 镜像
+docker compose up -d          # 后台启动容器
 ```
 
-Compose 默认读取项目根目录的 `.env` 注入容器。若希望使用其他文件，可执行 `docker compose --env-file your.env up` 或修改 `docker-compose.yml` 的 `env_file` 配置。
+Compose 默认读取项目根目录的 `.env` 注入容器。若希望使用其他文件，可执行 `docker compose --env-file your.env up` 或修改 `docker-compose.yml` 的 `env_file` 配置。使用本仓库提供的 `docker-compose.yml` 会自动拉取 `ghcr.io/sakiyary/ai4se-travel-planner:latest` 镜像。
 
 ## 📄 文档与交付物
 

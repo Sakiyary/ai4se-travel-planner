@@ -76,7 +76,7 @@
   2. 确保 `docker` 与 `docker compose` 命令可正常运行。
   3. 在仓库根目录创建 `.env` 文件，填写 Supabase、DashScope、科大讯飞等密钥。
   4. 通过 `docker build` 构建镜像，或使用 GitHub Actions 产出的镜像直接 `docker pull`。
-  5. 使用 `docker run --env-file .env -p 3000:3000 <image>` 启动应用并完成联调。
+  5. 使用 `docker run --env-file .env -p 3000:3000 ghcr.io/sakiyary/ai4se-travel-planner:latest` 启动应用并完成联调。
 - **注意事项**：
   - 建议在 `.env` 中仅保留课程评分所需的最小密钥集。
   - 运行容器时务必通过 `--env-file` 或 `-e` 注入上述变量，应用会在启动阶段由 `RuntimeConfigScript` 将其写入浏览器可读的 `window.__APP_CONFIG__`。

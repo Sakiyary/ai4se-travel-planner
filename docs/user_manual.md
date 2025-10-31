@@ -73,7 +73,7 @@
 
 1. 在仓库根目录执行 `docker build -t travel-planner:latest .` 构建镜像。
 2. 准备 `.env`，填入上文所列的环境变量。
-3. 使用 `docker run --env-file .env -p 3000:3000 travel-planner:latest` 启动容器，浏览器访问 `http://localhost:3000` 完成验证。
+3. 使用 `docker run --env-file .env -p 3000:3000 ghcr.io/sakiyary/ai4se-travel-planner:latest` 启动容器，浏览器访问 `http://localhost:3000` 完成验证。
 4. 若部署在云服务器，建议配合反向代理及 HTTPS 证书，以便语音录制可用。
 
 ## 10. 常见问题排查
