@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { ROUTES } from '../../lib/constants';
 import { SidebarNav } from '../navigation/SidebarNav';
 import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
-import { supabaseClient } from '../../lib/supabaseClient';
+import { getSupabaseClient } from '../../lib/supabaseClient';
 
 const AUTH_ROUTES = new Set<string>([ROUTES.LOGIN]);
 
@@ -22,13 +22,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   async function handleSignOut() {
-    if (!supabaseClient) {
+    const client = getSupabaseClient();
+
+    if (!client) {
       toast({ status: 'error', title: 'Supabase 未配置，无法登出。' });
       return;
     }
 
     try {
-      await supabaseClient.auth.signOut();
+      await client.auth.signOut();
       toast({ status: 'success', title: '已退出登录' });
     } catch (error) {
       const description = error instanceof Error ? error.message : undefined;

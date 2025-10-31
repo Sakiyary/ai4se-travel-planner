@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { AppShell } from '../components/layout/AppShell';
 import { AppProviders } from './providers';
+import { RuntimeConfigScript } from '../components/runtime/RuntimeConfigScript';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -34,6 +35,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body suppressHydrationWarning>
+        <RuntimeConfigScript />
         <AppProviders>
           <AppShell>{children}</AppShell>
         </AppProviders>

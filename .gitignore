@@ -45,6 +45,7 @@ coverage/
 
 # Misc
 .vercel/
+submission_report.md
 
 # Docker artifacts
 .docker/

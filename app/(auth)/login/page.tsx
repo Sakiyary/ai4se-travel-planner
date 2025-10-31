@@ -21,7 +21,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ROUTES } from '../../../lib/constants';
-import { supabaseClient } from '../../../lib/supabaseClient';
+import { getSupabaseClient } from '../../../lib/supabaseClient';
 import { useSupabaseAuth } from '../../../hooks/useSupabaseAuth';
 
 export default function LoginPage() {
@@ -44,7 +44,9 @@ export default function LoginPage() {
     event.preventDefault();
     setError(null);
 
-    if (!supabaseClient) {
+    const supabase = getSupabaseClient();
+
+    if (!supabase) {
       setError('Supabase 未配置，无法登录。请联系管理员。');
       return;
     }
@@ -58,7 +60,7 @@ export default function LoginPage() {
 
     try {
       const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}${ROUTES.DASHBOARD}` : undefined;
-      const { error: signInError } = await supabaseClient.auth.signInWithOtp({
+      const { error: signInError } = await supabase.auth.signInWithOtp({
         email: email.trim(),
         options: {
           emailRedirectTo: redirectUrl

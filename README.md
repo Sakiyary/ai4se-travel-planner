@@ -37,7 +37,7 @@ AI 旅行规划师是一个基于 Next.js 15 的语音驱动旅行策划应用�
     cp .env.example .env
     ```
 
-    按照 `docs/platform_setup.md` 中的对照表填写 DashScope、科大讯飞、高德等密钥。仓库附带的 `.env.example` 已预置演示 Supabase URL、匿名密钥与默认 Bucket 名称，如需接入自有 Supabase 项目，请将这些值替换为实际配置。`.env` 会在开发、CI 以及 Docker Compose 中统一读取。
+    按照 `docs/platform_setup.md` 中的对照表填写 DashScope、科大讯飞、高德等密钥。仓库附带的 `.env.example` 已预置演示 Supabase URL、匿名密钥与默认 Bucket 名称，如需接入自有 Supabase 项目，请将这些值替换为实际配置。`.env` 会在开发、CI 以及 Docker / Compose 中统一读取，应用启动后由 `RuntimeConfigScript` 将这些值注入浏览器可读的 `window.__APP_CONFIG__`，因此无需再维护 `NEXT_PUBLIC_*` 变量。
 
 1. **安装依赖**：
 
@@ -91,6 +91,7 @@ docker run --env-file .env -p 3000:3000 travel-planner:latest
 - 多阶段构建（deps → builder → runner），生产阶段仅保留运行所需依赖。
 - 构建过程中会运行 lint / typecheck / build，保证产物可用。
 - 默认暴露 3000 端口，启动命令为 `npm run start`。
+- 启动时读取容器环境变量并通过运行时脚本注入前端，便于在 `docker run` 阶段替换密钥。
 
 ### 使用 Docker Compose
 

@@ -48,6 +48,7 @@
   3. 在 Storage 模块创建 `voice-notes`、`plan-exports` 等 Bucket。
 - **注意事项**：
   - Service Role 密钥仅存储于服务器端环境变量，不得写入客户端。
+  - 前端访问 Supabase 的匿名密钥由运行时注入脚本提供，无需再配置 `NEXT_PUBLIC_*` 前缀。
 
 ## 4. 高德开放平台
 
@@ -61,6 +62,7 @@
   3. 为 Web 端 Key 配置域名白名单（如 `localhost`、正式域名），此处为方便助教批改，均留空。
 - **注意事项**：
   - Web 服务 Key 不应暴露在前端。
+  - 浏览器使用的 Web 端 Key 通过运行时配置脚本注入，部署时只需在容器环境变量中提供原始值。
   - 调用频率受套餐限制，确保缓存策略有效降低请求次数。
 
 ## 5. 本地 Docker 运行环境
@@ -77,6 +79,7 @@
   5. 使用 `docker run --env-file .env -p 3000:3000 <image>` 启动应用并完成联调。
 - **注意事项**：
   - 建议在 `.env` 中仅保留课程评分所需的最小密钥集。
+  - 运行容器时务必通过 `--env-file` 或 `-e` 注入上述变量，应用会在启动阶段由 `RuntimeConfigScript` 将其写入浏览器可读的 `window.__APP_CONFIG__`。
   - 若需要多服务协同，可编写 `docker-compose.yml` 管理依赖（如本地 Supabase 模拟器）。
 
 ## 6. 阿里云容器镜像服务（ACR）
@@ -125,7 +128,7 @@
 | `AMAP_WEB_KEY` | 高德开放平台 | 前端地图渲染 Key |
 | `AMAP_SECURITY_JS_CODE` | 高德开放平台 | 前端安全校验码 |
 
-> Next.js 通过 `next.config.mjs` 将上表中的服务器变量映射到 `NEXT_PUBLIC_*` 前缀，方便客户端读取，无需重复配置。
+> 应用在服务器端读取上述环境变量，并由 `components/runtime/RuntimeConfigScript.tsx` 注入到浏览器的 `window.__APP_CONFIG__` 中，因而不再需要 `NEXT_PUBLIC_*` 变量。请确保容器或运行进程在启动时即可访问这些值。
 
 ## 9. 申请进度追踪模板
 

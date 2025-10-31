@@ -57,17 +57,17 @@
 
 | 变量名 | 说明 |
 | --- | --- |
-| `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL` | Supabase 项目地址 |
-| `SUPABASE_ANON_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 公共匿名密钥 |
+| `SUPABASE_URL` | Supabase 项目地址 |
+| `SUPABASE_ANON_KEY` | 公共匿名密钥（前端将通过运行时脚本读取） |
 | `SUPABASE_VOICE_BUCKET` | 存放语音文件的 Storage Bucket 名称 |
 | `SUPABASE_EXPORT_BUCKET` | 导出行程的 Storage Bucket 名称 |
 | `DASHSCOPE_API_KEY` | 通义千问 API Key |
-| `AMAP_WEB_KEY` / `NEXT_PUBLIC_AMAP_KEY` | 高德地图 JS API Key |
-| `AMAP_SECURITY_JS_CODE` / `NEXT_PUBLIC_AMAP_SECURITY_JS_CODE` | 高德安全校验码 |
-| `IFLYTEK_APP_ID` / `NEXT_PUBLIC_IFLYTEK_APP_ID` | 科大讯飞 App ID |
+| `AMAP_WEB_KEY` | 高德地图 JS API Key |
+| `AMAP_SECURITY_JS_CODE` | 高德安全校验码 |
+| `IFLYTEK_APP_ID` | 科大讯飞 App ID |
 | `IFLYTEK_API_KEY`、`IFLYTEK_API_SECRET` | 科大讯飞语音识别密钥 |
 
-> **构建与 CI 提示**：GitHub Actions `quality` 任务会填充一组哑数据，保证 `npm run build` 在 CI 环境中可执行。实际部署时需在 `.env` 或容器环境变量中填写真实值。
+> **构建与 CI 提示**：GitHub Actions `quality` 任务会填充一组哑数据，保证 `npm run build` 在 CI 环境中可执行。实际部署时需在 `.env` 或容器环境变量中填写真实值，应用会在运行时由 `RuntimeConfigScript` 将这些变量注入浏览器。
 
 ## 9. Docker 使用指南
 
@@ -83,7 +83,7 @@
 | PDF 导出仍出现乱码 | 确认 `public/fonts/simhei.ttf` 是否存在，或根据 README 指南替换为其它字体并更新 `CHINESE_FONT_CONFIG`。 |
 | 无法连接 Supabase | 检查 `.env` 是否写入有效的 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY`，浏览器控制台会输出具体错误。 |
 | 语音转写失败 | 确认科大讯飞密钥是否过期，或在开发环境允许非 HTTPS 麦克风访问。 |
-| 高德地图未渲染 | 确认 `NEXT_PUBLIC_AMAP_KEY` 与 `NEXT_PUBLIC_AMAP_SECURITY_JS_CODE` 已配置，且域名满足白名单。 |
+| 高德地图未渲染 | 确认容器环境注入的 `AMAP_WEB_KEY` 与 `AMAP_SECURITY_JS_CODE` 已配置，且域名满足白名单。 |
 | Docker 容器启动后报错 | 使用 `docker logs` 查看输出，核对环境变量是否齐全，并保证容器能够访问外部 API。 |
 
 ## 11. 版本管理与后续迭代建议

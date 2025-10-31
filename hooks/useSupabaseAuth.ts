@@ -2,7 +2,7 @@
 
 import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
-import { supabaseClient } from '../lib/supabaseClient';
+import { getSupabaseClient } from '../lib/supabaseClient';
 
 interface SupabaseAuthState {
   session: Session | null;
@@ -19,9 +19,10 @@ export function useSupabaseAuth(): SupabaseAuthState {
 
   useEffect(() => {
     let isMounted = true;
+    const client = getSupabaseClient();
 
     async function init() {
-      if (!supabaseClient) {
+      if (!client) {
         if (isMounted) {
           setIsLoading(false);
         }
@@ -29,7 +30,7 @@ export function useSupabaseAuth(): SupabaseAuthState {
       }
 
       try {
-        const { data } = await supabaseClient.auth.getSession();
+        const { data } = await client.auth.getSession();
         if (isMounted) {
           setSession(data.session ?? null);
           setUser(data.session?.user ?? null);
@@ -46,7 +47,7 @@ export function useSupabaseAuth(): SupabaseAuthState {
 
     init();
 
-    const subscription = supabaseClient?.auth.onAuthStateChange((
+    const subscription = client?.auth.onAuthStateChange((
       _event: AuthChangeEvent,
       nextSession: Session | null
     ) => {

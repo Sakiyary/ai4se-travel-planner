@@ -2,6 +2,7 @@
 
 import { Box, Spinner, Stack, Text } from '@chakra-ui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getRuntimeConfig } from '../../lib/runtimeConfig';
 
 declare global {
   interface Window {
@@ -455,11 +456,8 @@ export function ItineraryMap({ destination, points }: ItineraryMapProps) {
   const [resolvedPoints, setResolvedPoints] = useState<ResolvedActivityPoint[]>([]);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
 
-  const amapKey = useMemo(() => process.env.NEXT_PUBLIC_AMAP_KEY ?? process.env.AMAP_WEB_KEY ?? '', []);
-  const amapSecurityCode = useMemo(
-    () => process.env.NEXT_PUBLIC_AMAP_SECURITY_JS_CODE ?? process.env.AMAP_SECURITY_JS_CODE ?? '',
-    []
-  );
+  const amapKey = useMemo(() => getRuntimeConfig().amapWebKey ?? '', []);
+  const amapSecurityCode = useMemo(() => getRuntimeConfig().amapSecurityJsCode ?? '', []);
 
   const normalizedPoints = useMemo(() => {
     const unique = new Map<string, MapActivityPoint>();
@@ -488,7 +486,7 @@ export function ItineraryMap({ destination, points }: ItineraryMapProps) {
     }
 
     if (!amapKey) {
-      setErrorMessage('缺少高德地图 Key，请在环境变量中配置 NEXT_PUBLIC_AMAP_KEY。');
+      setErrorMessage('缺少高德地图 Key，请在环境变量中配置 AMAP_WEB_KEY。');
       setStatus('error');
       return;
     }

@@ -1,3 +1,5 @@
+import { getRuntimeConfig } from '../lib/runtimeConfig';
+
 export interface SpeechToTextResult {
   text: string;
   confidence?: number;
@@ -10,9 +12,10 @@ export async function transcribeAudio(blob: Blob): Promise<SpeechToTextResult> {
     throw new Error('科大讯飞语音转写仅在浏览器环境中可用。');
   }
 
-  const appId = process.env.NEXT_PUBLIC_IFLYTEK_APP_ID ?? process.env.IFLYTEK_APP_ID;
-  const apiKey = process.env.NEXT_PUBLIC_IFLYTEK_API_KEY ?? process.env.IFLYTEK_API_KEY;
-  const apiSecret = process.env.NEXT_PUBLIC_IFLYTEK_API_SECRET ?? process.env.IFLYTEK_API_SECRET;
+  const config = getRuntimeConfig();
+  const appId = config.iflytekAppId;
+  const apiKey = config.iflytekApiKey;
+  const apiSecret = config.iflytekApiSecret;
 
   if (!appId || !apiKey || !apiSecret) {
     throw new Error('缺少科大讯飞凭据，请配置 IFLYTEK_APP_ID / IFLYTEK_API_KEY / IFLYTEK_API_SECRET。');

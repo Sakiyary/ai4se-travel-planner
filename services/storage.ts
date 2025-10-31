@@ -1,18 +1,23 @@
-import { supabaseClient } from '../lib/supabaseClient';
+import { getSupabaseClient } from '../lib/supabaseClient';
+import { getRuntimeConfig } from '../lib/runtimeConfig';
 
-const EXPORT_BUCKET =
-  process.env.SUPABASE_EXPORT_BUCKET ?? process.env.NEXT_PUBLIC_SUPABASE_EXPORT_BUCKET ?? 'plan-exports';
-const VOICE_BUCKET =
-  process.env.SUPABASE_VOICE_BUCKET ?? process.env.NEXT_PUBLIC_SUPABASE_VOICE_BUCKET ?? 'voice-notes';
+function resolveExportBucket() {
+  return getRuntimeConfig().supabaseExportBucket ?? 'plan-exports';
+}
+
+function resolveVoiceBucket() {
+  return getRuntimeConfig().supabaseVoiceBucket ?? 'voice-notes';
+}
 
 export async function savePlanDocument(planId: string, payload: Blob) {
+  const supabaseClient = getSupabaseClient();
   if (!supabaseClient) {
     throw new Error('Supabase 客户端未初始化。');
   }
 
   const path = `plans/${planId}/${Date.now()}.json`;
   const { error } = await supabaseClient.storage
-    .from(EXPORT_BUCKET)
+    .from(resolveExportBucket())
     .upload(path, payload, {
       contentType: 'application/json',
       upsert: true
@@ -26,6 +31,7 @@ export async function savePlanDocument(planId: string, payload: Blob) {
 }
 
 export async function uploadVoiceNoteBlob(planId: string, blob: Blob, contentType?: string) {
+  const supabaseClient = getSupabaseClient();
   if (!supabaseClient) {
     throw new Error('Supabase 客户端未初始化。');
   }
@@ -36,7 +42,7 @@ export async function uploadVoiceNoteBlob(planId: string, blob: Blob, contentTyp
   const path = `${planId}/${Date.now()}.${extension}`;
 
   const { data, error } = await supabaseClient.storage
-    .from(VOICE_BUCKET)
+    .from(resolveVoiceBucket())
     .upload(path, blob, {
       contentType: resolvedContentType,
       upsert: false
@@ -50,23 +56,25 @@ export async function uploadVoiceNoteBlob(planId: string, blob: Blob, contentTyp
 }
 
 export async function deleteVoiceNoteBlob(path: string) {
+  const supabaseClient = getSupabaseClient();
   if (!supabaseClient) {
     throw new Error('Supabase 客户端未初始化。');
   }
 
-  const { error } = await supabaseClient.storage.from(VOICE_BUCKET).remove([path]);
+  const { error } = await supabaseClient.storage.from(resolveVoiceBucket()).remove([path]);
   if (error) {
     throw error;
   }
 }
 
 export async function createSignedVoiceNoteUrl(path: string, expiresInSeconds = 300) {
+  const supabaseClient = getSupabaseClient();
   if (!supabaseClient) {
     throw new Error('Supabase 客户端未初始化。');
   }
 
   const { data, error } = await supabaseClient.storage
-    .from(VOICE_BUCKET)
+    .from(resolveVoiceBucket())
     .createSignedUrl(path, expiresInSeconds);
 
   if (error || !data) {

@@ -1,5 +1,5 @@
-import type { PostgrestError, User } from '@supabase/supabase-js';
-import { supabaseClient } from './supabaseClient';
+import type { PostgrestError, SupabaseClient, User } from '@supabase/supabase-js';
+import { getSupabaseClient } from './supabaseClient';
 import { SUPABASE_TABLES } from './constants';
 
 export interface PlanRecord {
@@ -144,10 +144,16 @@ export interface RecordAuditLogInput {
   metadata?: Record<string, unknown> | null;
 }
 
-async function getAuthenticatedUser(): Promise<User> {
-  if (!supabaseClient) {
+function requireSupabaseClient(): SupabaseClient {
+  const client = getSupabaseClient();
+  if (!client) {
     throw new Error('Supabase client not initialized');
   }
+  return client;
+}
+
+async function getAuthenticatedUser(): Promise<User> {
+  const supabaseClient = requireSupabaseClient();
 
   const { data, error } = await supabaseClient.auth.getUser();
   if (error || !data.user) {
@@ -158,9 +164,7 @@ async function getAuthenticatedUser(): Promise<User> {
 }
 
 async function ensureProfileExists(user: User): Promise<void> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   try {
     const { data, error } = await supabaseClient
@@ -212,9 +216,7 @@ async function ensureProfileExists(user: User): Promise<void> {
 }
 
 async function fetchProfileRow(userId: string): Promise<Record<string, unknown> | null> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   const { data, error } = await supabaseClient
     .from(SUPABASE_TABLES.PROFILES)
@@ -245,6 +247,7 @@ export async function fetchCurrentProfile(): Promise<ProfileRecord | null> {
 }
 
 export async function updateProfile(updates: UpdateProfileInput): Promise<ProfileRecord> {
+  const supabaseClient = requireSupabaseClient();
   const user = await getAuthenticatedUser();
   await ensureProfileExists(user);
 
@@ -294,7 +297,7 @@ export async function updateProfile(updates: UpdateProfileInput): Promise<Profil
 
   payload.updated_at = new Date().toISOString();
 
-  const { data, error } = await supabaseClient!
+  const { data, error } = await supabaseClient
     .from(SUPABASE_TABLES.PROFILES)
     .update(payload)
     .eq('id', user.id)
@@ -312,9 +315,7 @@ export async function updateProfile(updates: UpdateProfileInput): Promise<Profil
 }
 
 export async function savePlanFromItinerary(options: SavePlanFromItineraryOptions): Promise<string> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   const user = await getAuthenticatedUser();
   await ensureProfileExists(user);
@@ -407,9 +408,7 @@ export async function savePlanFromItinerary(options: SavePlanFromItineraryOption
 }
 
 export async function fetchPlans(): Promise<PlanRecord[]> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   const { data, error } = await supabaseClient
     .from(SUPABASE_TABLES.PLANS)
@@ -430,9 +429,7 @@ export async function fetchPlans(): Promise<PlanRecord[]> {
 }
 
 export async function fetchPlanDetail(planId: string): Promise<PlanDetail> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   const { data, error } = await supabaseClient
     .from(SUPABASE_TABLES.PLANS)
@@ -597,9 +594,7 @@ export async function fetchPlanDetail(planId: string): Promise<PlanDetail> {
 }
 
 export async function updatePlan(planId: string, updates: UpdatePlanInput): Promise<PlanRecord> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   const payload: Record<string, unknown> = {};
 
@@ -667,9 +662,7 @@ export async function updatePlan(planId: string, updates: UpdatePlanInput): Prom
 }
 
 export async function deletePlan(planId: string): Promise<void> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   const { error } = await supabaseClient.from(SUPABASE_TABLES.PLANS).delete().eq('id', planId);
 
@@ -753,9 +746,7 @@ function normalizeExpense(row: Record<string, unknown>): ExpenseRecord {
 }
 
 export async function fetchExpenses(planId: string): Promise<ExpenseRecord[]> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   const { data, error } = await supabaseClient
     .from(SUPABASE_TABLES.EXPENSES)
@@ -771,9 +762,7 @@ export async function fetchExpenses(planId: string): Promise<ExpenseRecord[]> {
 }
 
 export async function createExpense(input: CreateExpenseInput): Promise<ExpenseRecord> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   if (!Number.isFinite(input.amount) || input.amount <= 0) {
     throw new Error('费用金额必须大于 0。');
@@ -818,9 +807,7 @@ export async function createExpense(input: CreateExpenseInput): Promise<ExpenseR
 }
 
 export async function deleteExpense(expenseId: string): Promise<void> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   const { error } = await supabaseClient
     .from(SUPABASE_TABLES.EXPENSES)
@@ -833,6 +820,7 @@ export async function deleteExpense(expenseId: string): Promise<void> {
 }
 
 export async function recordAuditLog(input: RecordAuditLogInput): Promise<void> {
+  const supabaseClient = getSupabaseClient();
   if (!supabaseClient) {
     return;
   }
@@ -872,9 +860,7 @@ export async function recordAuditLog(input: RecordAuditLogInput): Promise<void> 
 }
 
 export async function fetchAuditLogs(limit = 20): Promise<AuditLogRecord[]> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   await getAuthenticatedUser();
 
@@ -959,9 +945,7 @@ export function mapSupabaseError(error: PostgrestError | Error): string {
 }
 
 export async function fetchVoiceNotes(planId: string): Promise<VoiceNoteRecord[]> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   const { data, error } = await supabaseClient
     .from(SUPABASE_TABLES.VOICE_NOTES ?? 'voice_notes')
@@ -994,9 +978,7 @@ export async function createVoiceNote(input: {
   transcript?: string | null;
   durationSeconds?: number | null;
 }): Promise<VoiceNoteRecord> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   const payload = {
     plan_id: input.planId,
@@ -1043,9 +1025,7 @@ export async function createVoiceNote(input: {
 }
 
 export async function deleteVoiceNote(noteId: string): Promise<void> {
-  if (!supabaseClient) {
-    throw new Error('Supabase client not initialized');
-  }
+  const supabaseClient = requireSupabaseClient();
 
   const { error } = await supabaseClient
     .from(SUPABASE_TABLES.VOICE_NOTES ?? 'voice_notes')
