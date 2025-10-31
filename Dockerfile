@@ -2,13 +2,12 @@
 
 FROM node:20-alpine AS deps
 WORKDIR /app
-ENV NODE_ENV=development
 COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM node:20-alpine AS builder
 WORKDIR /app
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run lint && npm run typecheck && npm run build
