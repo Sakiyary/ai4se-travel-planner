@@ -11,29 +11,39 @@ export interface RuntimeConfig {
   dashscopeApiKey?: string;
 }
 
-const serverRuntimeConfig: RuntimeConfig = {
-  supabaseUrl: process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL,
-  supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  supabaseExportBucket:
-    process.env.SUPABASE_EXPORT_BUCKET ?? process.env.NEXT_PUBLIC_SUPABASE_EXPORT_BUCKET,
-  supabaseVoiceBucket:
-    process.env.SUPABASE_VOICE_BUCKET ?? process.env.NEXT_PUBLIC_SUPABASE_VOICE_BUCKET,
-  amapWebKey: process.env.AMAP_WEB_KEY ?? process.env.NEXT_PUBLIC_AMAP_KEY,
-  amapSecurityJsCode:
-    process.env.AMAP_SECURITY_JS_CODE ?? process.env.NEXT_PUBLIC_AMAP_SECURITY_JS_CODE,
-  iflytekAppId: process.env.IFLYTEK_APP_ID ?? process.env.NEXT_PUBLIC_IFLYTEK_APP_ID,
-  iflytekApiKey: process.env.IFLYTEK_API_KEY ?? process.env.NEXT_PUBLIC_IFLYTEK_API_KEY,
-  iflytekApiSecret:
-    process.env.IFLYTEK_API_SECRET ?? process.env.NEXT_PUBLIC_IFLYTEK_API_SECRET,
-  dashscopeApiKey: process.env.DASHSCOPE_API_KEY ?? process.env.NEXT_PUBLIC_DASHSCOPE_API_KEY
-};
+function readEnv(key: string): string | undefined {
+  return process.env[key];
+}
+
+function resolveEnv(primary: string, fallback?: string): string | undefined {
+  const value = readEnv(primary);
+  if (value !== undefined && value !== '') {
+    return value;
+  }
+  return fallback ? readEnv(fallback) : undefined;
+}
+
+export function getServerRuntimeConfig(): RuntimeConfig {
+  return {
+    supabaseUrl: resolveEnv('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL'),
+    supabaseAnonKey: resolveEnv('SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+    supabaseExportBucket: resolveEnv('SUPABASE_EXPORT_BUCKET', 'NEXT_PUBLIC_SUPABASE_EXPORT_BUCKET'),
+    supabaseVoiceBucket: resolveEnv('SUPABASE_VOICE_BUCKET', 'NEXT_PUBLIC_SUPABASE_VOICE_BUCKET'),
+    amapWebKey: resolveEnv('AMAP_WEB_KEY', 'NEXT_PUBLIC_AMAP_KEY'),
+    amapSecurityJsCode: resolveEnv('AMAP_SECURITY_JS_CODE', 'NEXT_PUBLIC_AMAP_SECURITY_JS_CODE'),
+    iflytekAppId: resolveEnv('IFLYTEK_APP_ID', 'NEXT_PUBLIC_IFLYTEK_APP_ID'),
+    iflytekApiKey: resolveEnv('IFLYTEK_API_KEY', 'NEXT_PUBLIC_IFLYTEK_API_KEY'),
+    iflytekApiSecret: resolveEnv('IFLYTEK_API_SECRET', 'NEXT_PUBLIC_IFLYTEK_API_SECRET'),
+    dashscopeApiKey: resolveEnv('DASHSCOPE_API_KEY', 'NEXT_PUBLIC_DASHSCOPE_API_KEY')
+  } satisfies RuntimeConfig;
+}
 
 export function getRuntimeConfig(): RuntimeConfig {
   if (typeof window !== 'undefined') {
     return window.__APP_CONFIG__ ?? {};
   }
 
-  return serverRuntimeConfig;
+  return getServerRuntimeConfig();
 }
 
 export function getConfigValue<K extends keyof RuntimeConfig>(
