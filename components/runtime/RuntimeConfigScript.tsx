@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-before-interactive-script-outside-document */
+import Script from 'next/script';
 import { getRuntimeConfig } from '../../lib/runtimeConfig';
 
 function serializeConfig(config: unknown) {
@@ -9,9 +11,13 @@ export function RuntimeConfigScript() {
   const serialized = serializeConfig(config);
 
   return (
-    <script
+    <Script
+      id="runtime-config"
+      strategy="beforeInteractive"
       // 将运行时配置注入到全局，供客户端组件读取。
-      dangerouslySetInnerHTML={{ __html: `window.__APP_CONFIG__ = ${serialized};` }}
+      dangerouslySetInnerHTML={{
+        __html: `window.__APP_CONFIG__ = Object.assign({}, window.__APP_CONFIG__, ${serialized});`
+      }}
     />
   );
 }
