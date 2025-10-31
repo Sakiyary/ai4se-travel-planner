@@ -91,7 +91,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/travel-planner:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/travel-planner:latest
+            ghcr.io/sakiyary/ai4se-travel-planner:${{ github.sha }}
+            ghcr.io/sakiyary/ai4se-travel-planner:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
