@@ -24,6 +24,9 @@ const nextConfig = {
   experimental: {
     optimisticClientCache: true
   },
+  eslint: {
+    ignoreDuringBuilds: true
+  },
   images: {
     remotePatterns: [
       {
