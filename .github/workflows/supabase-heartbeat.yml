@@ -1,0 +1,55 @@
+name: Supabase Heartbeat
+
+on:
+  schedule:
+    - cron: "0 0 */3 * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Send heartbeat request
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Missing Supabase secrets" >&2
+            exit 1
+          fi
+
+          node <<'EOF'
+          const url = process.env.SUPABASE_URL;
+          const anonKey = process.env.SUPABASE_ANON_KEY;
+
+          if (!url || !anonKey) {
+            console.error('Supabase URL or anon key missing');
+            process.exit(1);
+          }
+
+          const target = new URL('/rest/v1/plans?select=id&limit=1', url).toString();
+          const headers = {
+            apikey: anonKey,
+            Authorization: `Bearer ${anonKey}`,
+            Accept: 'application/json',
+          };
+
+          const ping = async () => {
+            const response = await fetch(target, { headers });
+            if (!response.ok) {
+              const text = await response.text();
+              throw new Error(`Heartbeat failed (${response.status}): ${text}`);
+            }
+
+            const body = await response.json();
+            console.log(`Heartbeat OK (${Array.isArray(body) ? body.length : 0} rows)`);
+          };
+
+          ping().catch(error => {
+            console.error(error);
+            process.exit(1);
+          });
+          EOF
