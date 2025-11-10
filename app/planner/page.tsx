@@ -293,7 +293,6 @@ function buildPrompt(userRequest: string): string {
   const trimmed = userRequest.trim();
   const instructions = `你是一名专业旅行规划师，需要输出严格遵循以下结构的 JSON：
 - 只能输出 JSON，禁止附加说明或 Markdown。
-- JSON 中不要出现 null；若缺少信息请提供合理的默认值，或直接省略该字段。
 - 必须生成如下键值：
   {
     "title": "字符串",
@@ -306,12 +305,12 @@ function buildPrompt(userRequest: string): string {
         "activities": [
           {
             "title": "字符串",
-            "description": "字符串，若信息不足请写精简描述，例如 '待补充'",
-            "startTime": "HH:MM 格式时间，若无法提供确切时间可使用 '00:00' 表示待定",
-            "endTime": "HH:MM 格式时间，若无法提供确切时间可使用 '00:00' 表示待定",
-            "city": "字符串，若不确定请写主要目的地或 '待定'",
-            "budget": 数字，若不清楚请写 0,
-            "poiId": "B0.... 形式的高德 POI 编号；仅在确认真实编号时填写"
+            "description": "字符串，不允许为 null",
+            "startTime": "HH:MM，不允许为 null",
+            "endTime": "HH:MM，不允许为 null",
+            "city": "字符串，不允许为 null",
+            "budget": 数字，不允许为 null,
+            "poiId": "B0...." 形式的高德 POI 编号，不允许为 null
           }
         ]
       }
@@ -326,10 +325,11 @@ function buildPrompt(userRequest: string): string {
     }
   }
 - 如果用户未提及同行人数，让 "partySize" = 2；title/destination 不明确时请根据上下文给出简洁概括。
-- 只有在确认地点属于该城市且知道高德真实编号时再输出 "poiId" 字段；否则省略该字段，不要伪造编号。
+- 每个活动的 "city" 请写真实的城市名称；若无法确认则填写 null，不要杜撰。
+- 只有在确认地点属于该城市且知道高德真实编号时再填写 "poiId"（形如 B0 开头），否则写 null，严禁占位符或猜测。
 - activities 可以为空数组但不能为空缺失天数；金额未知时填 0；所有数值使用阿拉伯数字，时间统一 HH:MM。
 - 示例（仅供格式参考）：
-  {"title":"示例行程","destination":"北京","partySize":2,"itinerary":[{"day":1,"summary":"行程概览","activities":[{"title":"天安门参观","description":"上午参观天安门广场","startTime":"09:00","endTime":"11:00","city":"北京","budget":200,"poiId":"B000A7R6M2"}]}],"budget":{"total":2000,"transport":400,"accommodation":800,"dining":400,"activities":300,"contingency":100}}
+  {"title":"示例行程","destination":"北京","partySize":2,"itinerary":[{"day":1,"summary":"行程概览","activities":[{"title":"天安门参观","description":null,"startTime":"09:00","endTime":"11:00","city":"北京","budget":200,"poiId":"B000A7R6M2"}]}],"budget":{"total":2000,"transport":400,"accommodation":800,"dining":400,"activities":300,"contingency":100}}
 - 返回的 JSON 必须可以被 JSON.parse 直接解析，不包含额外字段或尾随文本。`;
 
   if (!trimmed) {

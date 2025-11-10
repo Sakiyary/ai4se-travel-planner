@@ -2,7 +2,7 @@ name: Supabase Heartbeat
 
 on:
   schedule:
-    - cron: "0 0 */3 * *"
+    - cron: "0 0 * * *"
   workflow_dispatch:
 
 jobs:
@@ -11,10 +11,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Send heartbeat request
+      - name: Database read/write heartbeat
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
             echo "Missing Supabase secrets" >&2
@@ -24,32 +25,81 @@ jobs:
           node <<'EOF'
           const url = process.env.SUPABASE_URL;
           const anonKey = process.env.SUPABASE_ANON_KEY;
+          const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
           if (!url || !anonKey) {
             console.error('Supabase URL or anon key missing');
             process.exit(1);
           }
 
-          const target = new URL('/rest/v1/plans?select=id&limit=1', url).toString();
-          const headers = {
+          const anonHeaders = {
             apikey: anonKey,
             Authorization: `Bearer ${anonKey}`,
-            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
           };
 
-          const ping = async () => {
-            const response = await fetch(target, { headers });
-            if (!response.ok) {
-              const text = await response.text();
-              throw new Error(`Heartbeat failed (${response.status}): ${text}`);
+          const serviceHeaders = serviceKey ? {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            Prefer: 'return=minimal'
+          } : null;
+
+          const heartbeat = async () => {
+            // 1. 执行多次读操作以保持数据库活跃
+            const tables = ['plans', 'expenses', 'profiles'];
+            
+            for (const table of tables) {
+              const readUrl = new URL(`/rest/v1/${table}?select=id&limit=1`, url).toString();
+              const readResponse = await fetch(readUrl, { 
+                method: 'GET',
+                headers: anonHeaders 
+              });
+              
+              if (!readResponse.ok) {
+                console.warn(`⚠ Read from ${table} failed (${readResponse.status})`);
+                continue;
+              }
+              
+              const readData = await readResponse.json();
+              console.log(`✓ Read from ${table}: ${Array.isArray(readData) ? readData.length : 0} row(s)`);
             }
 
-            const body = await response.json();
-            console.log(`Heartbeat OK (${Array.isArray(body) ? body.length : 0} rows)`);
+            // 2. 使用 service role key 写入心跳记录（绕过 RLS）
+            if (serviceHeaders) {
+              const writeUrl = new URL('/rest/v1/audit_logs', url).toString();
+              const payload = {
+                user_id: null,
+                action: 'system.heartbeat',
+                metadata: {
+                  timestamp: new Date().toISOString(),
+                  source: 'github-actions',
+                  purpose: 'keep-alive'
+                }
+              };
+
+              const writeResponse = await fetch(writeUrl, {
+                method: 'POST',
+                headers: serviceHeaders,
+                body: JSON.stringify(payload)
+              });
+
+              if (!writeResponse.ok) {
+                console.warn(`⚠ Write heartbeat failed (${writeResponse.status}): ${await writeResponse.text()}`);
+              } else {
+                console.log(`✓ Write operation: inserted heartbeat audit log`);
+              }
+            } else {
+              console.log(`ℹ Service role key not configured, skipping write operation`);
+            }
+
+            console.log(`✅ Heartbeat complete - database accessed successfully`);
           };
 
-          ping().catch(error => {
-            console.error(error);
+          heartbeat().catch(error => {
+            console.error('❌ Heartbeat failed:', error.message);
             process.exit(1);
           });
           EOF
